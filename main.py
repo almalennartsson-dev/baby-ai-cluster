@@ -13,7 +13,8 @@ from evaluations import calculate_metrics
 
 #Collect all data files
 #DATA_DIR = pathlib.Path.home()/"data"/"bobsrepository" #cluster?
-DATA_DIR = pathlib.Path("/proj/synthetic_alzheimer/x_almle/bobsrepository") #cluster?
+DATA_DIR = pathlib.Path("/proj/synthetic_alzheimer/users/x_almle/bobsrepository") #cluster?
+assert DATA_DIR.exists(), f"DATA_DIR not found: {DATA_DIR}"
 t1_files = sorted(DATA_DIR.rglob("*T1w.nii.gz"))
 t2_files = sorted(DATA_DIR.rglob("*T2w.nii.gz"))
 t2_LR_files = sorted(DATA_DIR.rglob("*T2w_LR.nii.gz"))
@@ -56,7 +57,9 @@ net = UNet(
 loss_fn = nn.MSELoss()
 optimizer = optim.Adam(net.parameters(), lr=1e-4)
 num_epochs = 10
-device = torch.device("cpu") #cluster?
+use_cuda = torch.cuda.is_available()
+device = torch.device("cuda" if use_cuda else "cpu")
+#device = torch.device("cpu") #cluster?
 net.to(device)
 
 for epoch in range(num_epochs):
@@ -128,8 +131,7 @@ row_dict = {
     "mse": metrics["mse"],
     "loss_fn": "MSELoss",
     "optimizer": "Adam",
-    "notes": "Initial test run",
-    "masking": "None",
+    "notes": "berzelius first test",
 }
 
 append_row(DATA_DIR / "results.csv", row_dict) #cluster?
