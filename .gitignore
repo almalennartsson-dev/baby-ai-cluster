@@ -65,3 +65,5 @@ coverage.xml
 
 # Mac
 .DS_Store
+slurm/
+slurm-*.out
