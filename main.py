@@ -11,6 +11,7 @@ from file_structure import append_row
 import datetime
 from evaluations import calculate_metrics 
 
+print("Start at:", datetime.datetime.now().isoformat())
 #Collect all data files
 DATA_DIR = pathlib.Path.home()/"data"/"bobsrepository" #cluster?
 #DATA_DIR = pathlib.Path("/proj/synthetic_alzheimer/users/x_almle/bobsrepository") #cluster?
@@ -28,8 +29,8 @@ train, val, test = split_dataset(files)
 
 #EXTRACT PATCHES
 
-patch_size = (64, 64, 64)
-stride = (32, 32, 32)
+patch_size = (16, 16, 16)
+stride = (8, 8, 8)
 ref_img = nib.load(str(t1_files[0]))
 target_shape = (192, 224, 192) 
 train_t1, train_t2, train_t2_LR = get_patches(train, patch_size, stride, target_shape, ref_img)
@@ -57,11 +58,22 @@ print("Network initialized")
 loss_fn = nn.MSELoss()
 loss_list = []
 optimizer = optim.Adam(net.parameters(), lr=1e-4)
-num_epochs = 2
-use_cuda = torch.cuda.is_available()
-print(f"Using CUDA: {use_cuda}")
-device = torch.device("cuda" if use_cuda else "cpu")
+num_epochs = 100
+print(f"Number of epochs: {num_epochs}")
+
+#use_cuda = torch.cuda.is_available()
+#print(f"Using CUDA: {use_cuda}")
+#device = torch.device("cuda" if use_cuda else "cpu")
 #device = torch.device("cpu") #cluster?
+
+# Smart GPU/CPU detection
+import os
+slurm_gpus = int(os.environ.get('SLURM_GPUS_ON_NODE', '0'))
+has_gpu = torch.cuda.is_available() and slurm_gpus > 0 and torch.cuda.device_count() > 0
+
+device = torch.device("cuda" if has_gpu else "cpu")
+print(f"Using: {device} (SLURM GPUs: {slurm_gpus})")
+
 net.to(device, dtype=torch.float32)
 
 print("Starting training...")
@@ -74,7 +86,6 @@ for epoch in range(num_epochs):
         target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)  # (B, 1, 64, 64, 64)
 
         optimizer.zero_grad(set_to_none=True)
-        print("computing outputs...")
         outputs = net(inputs)
         loss = loss_fn(outputs, target)
         loss.backward()
@@ -99,6 +110,7 @@ with torch.no_grad():
             input1 = torch.tensor(val_t1[i][j]).float()
             input2 = torch.tensor(val_t2_LR[i][j]).float()
             inputs = torch.stack([input1, input2], dim=0).unsqueeze(0)  # (1, 2, 64, 64, 64)
+            inputs = inputs.to(device, dtype=torch.float32)  # Move to device!
             output = net(inputs)
             all_outputs.append(output.squeeze(0).squeeze(0).cpu().numpy())  # (64, 64, 64)
         gen_reconstructed = reconstruct_from_patches(all_outputs, target_shape, stride)
@@ -140,7 +152,7 @@ row_dict = {
     "loss_fn": "MSELoss",
     "loss_list": loss_list,
     "optimizer": "Adam",
-    "notes": "Initial test run",
+    "notes": "introduce correct split",
     "masking": "None",
     "weights": f"{timestamp}_model_weights.pth",
 
@@ -150,3 +162,4 @@ row_dict = {
 (DATA_DIR / "outputs").mkdir(parents=True, exist_ok=True)
 torch.save(net.state_dict(), DATA_DIR / "outputs" / f"{timestamp}_model_weights.pth") 
 append_row(DATA_DIR / "outputs" / "results.csv", row_dict)
+print("End at:", datetime.datetime.now().isoformat())
