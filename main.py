@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from dataset import TrainDataset
+from dataset import TrainDataset, EarlyStopping
 from preprocessing import create_and_save_LR_imgs, reconstruct_from_patches, split_dataset, get_patches
 from file_structure import append_row
 import datetime
@@ -83,6 +83,7 @@ print("Starting training...")
 
 timestamp = datetime.datetime.now().isoformat()
 best_val_loss = float('inf')
+early_stopping = EarlyStopping(patience=5, min_delta=0.0)
 
 for epoch in range(num_epochs):
     #TRAINING
@@ -119,7 +120,7 @@ for epoch in range(num_epochs):
     epoch_val_loss = val_loss / len(val_loader.dataset)
     val_loss_list.append(epoch_val_loss)
 
-    #save the best model based on validation loss
+    #save the best model based on validation loss. KEEP THIS OR NOT?
     if epoch_val_loss < best_val_loss:
         best_val_loss = epoch_val_loss
         torch.save(net.state_dict(), DATA_DIR / "outputs" / f"{timestamp}_model_weights.pth")
@@ -127,11 +128,16 @@ for epoch in range(num_epochs):
 
     print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {epoch_train_loss:.4f}, Val Loss: {epoch_val_loss:.4f}")
 
+    #EARLY STOPPING
+    if early_stopping.step(val_loss):
+        print(f"Early stopping at epoch {epoch+1}")
+        break
+
 #TESTING
 generated_images = []
 real_images = []
 
-net.eval()
+net.eval() # could be not the best model, but the last one. FIX THIS!
 with torch.no_grad():
     for i in range(len(test_t1)):
         all_outputs = []

@@ -29,3 +29,26 @@ class TrainDataset(Dataset):
         output = torch.from_numpy(output).float()
 
         return input1, input2, output
+
+class EarlyStopping:
+    def __init__(self, patience=5, min_delta=0.0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.best = None
+        self.count = 0
+        self.should_stop = False
+
+    def step(self, metric):
+        if self.best is None: #first loop
+            self.best = metric
+            return False
+
+        improve = (metric < self.best - self.min_delta) 
+        if improve:
+            self.best = metric
+            self.count = 0
+        else:
+            self.count += 1
+            if self.count >= self.patience:
+                self.should_stop = True
+        return self.should_stop
