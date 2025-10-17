@@ -137,6 +137,19 @@ for epoch in range(num_epochs):
 generated_images = []
 real_images = []
 
+# Load the best model for testing
+net = UNet(
+    spatial_dims=3,
+    in_channels=2,
+    out_channels=1,
+    channels=(16, 32, 64, 128, 256),
+    strides=(2, 2, 2, 2),
+    num_res_units=2,
+    norm=None,
+)
+
+net.load_state_dict(torch.load(DATA_DIR / "outputs" / f"{timestamp}_model_weights.pth", map_location=device))
+net.to(device, dtype=torch.float32)
 net.eval() # could be not the best model, but the last one. FIX THIS!
 with torch.no_grad():
     for i in range(len(test_t1)):
@@ -186,12 +199,14 @@ row_dict = {
     "loss_fn": "MSELoss",
     "loss_list": loss_list,
     "optimizer": "Adam",
-    "notes": "introduce val loss tracking",
     "masking": "None",
     "weights": f"{timestamp}_model_weights.pth",
     "val_loss_list": val_loss_list,
     "best_epoch": best_epoch,
-
+    "stop_epoch": epoch + 1,
+    "patience": early_stopping.patience,
+    "min_delta": early_stopping.min_delta,
+    "notes": "calculate metrics on best epoch",
 }
 
 #create outputs directory if it doesn't exist
