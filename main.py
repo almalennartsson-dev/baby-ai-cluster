@@ -1,6 +1,7 @@
 import pathlib
 import nibabel as nib
 from monai.networks.nets import UNet
+#from unet import UNet
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -10,6 +11,8 @@ from preprocessing import create_and_save_LR_imgs, reconstruct_from_patches, spl
 from file_structure import append_row
 import datetime
 from evaluations import calculate_metrics 
+from monai.networks.layers.factories import Norm
+#from monai.losses.perceptual import PerceptualLoss
 
 print("Start at:", datetime.datetime.now().isoformat())
 #Collect all data files
@@ -54,10 +57,16 @@ net = UNet(
     channels=(16, 32, 64, 128, 256),
     strides=(2, 2, 2, 2),
     num_res_units=2,
-    norm=None,
+    norm=Norm.INSTANCE,
 )
 print("Network initialized")
 loss_fn = nn.MSELoss()
+#lpips_loss = PerceptualLoss(
+#   spatial_dims=3,
+#    network_type='medicalnet_resnet10_23datasets',
+#    is_fake_3d=False,
+#)
+print("implemented losses")
 loss_list = []
 val_loss_list = []
 optimizer = optim.Adam(net.parameters(), lr=1e-4)
@@ -81,6 +90,8 @@ net.to(device, dtype=torch.float32)
 
 print("Starting training...")
 
+#lpips_loss = lpips_loss.to(device=device, dtype=torch.float32)
+#lpips_loss.eval()
 timestamp = datetime.datetime.now().isoformat()
 best_val_loss = float('inf')
 early_stopping = EarlyStopping(patience=5, min_delta=0.0)
@@ -145,7 +156,7 @@ net = UNet(
     channels=(16, 32, 64, 128, 256),
     strides=(2, 2, 2, 2),
     num_res_units=2,
-    norm=None,
+    norm=Norm.INSTANCE,
 )
 
 net.load_state_dict(torch.load(DATA_DIR / "outputs" / f"{timestamp}_model_weights.pth", map_location=device))
@@ -206,7 +217,7 @@ row_dict = {
     "stop_epoch": epoch + 1,
     "patience": early_stopping.patience,
     "min_delta": early_stopping.min_delta,
-    "notes": "calculate metrics on best epoch",
+    "notes":"instance norm in all layers",
 }
 
 #create outputs directory if it doesn't exist
