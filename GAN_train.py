@@ -14,8 +14,8 @@ from file_structure import append_row
 print("Start at:", datetime.datetime.now().isoformat())
 # Parameters
 batch_size = 2
-patch_size = (32, 32, 32)
-stride = (16, 16, 16)
+patch_size = (64, 64, 64)
+stride = (32, 32, 32)
 target_shape = (192, 224, 192) 
 num_epochs = 20
 timestamp = datetime.datetime.now().isoformat()
@@ -98,10 +98,15 @@ for epoch in range(num_epochs):
         #DISCRIMINATOR TRAINING
         d_optimizer.zero_grad()
         pred_real = D(real_pair)
-        loss_real = adv_loss(pred_real[-1], target_is_real=True, for_discriminator=True)
-
         pred_fake = D(fake_pair)
-        loss_fake = adv_loss(pred_fake[-1], target_is_real=False, for_discriminator=True)
+        
+        loss_real = 0.0
+        loss_fake = 0.0
+        for pr, pf in zip(pred_real, pred_fake):
+            loss_real += adv_loss(pr, target_is_real=True, for_discriminator=True)
+            loss_fake += adv_loss(pf, target_is_real=False, for_discriminator=True)
+        loss_real /= len(pred_real)
+        loss_fake /= len(pred_fake)
 
         #Total loss
         loss_D = (loss_real + loss_fake) * 0.5
@@ -115,8 +120,10 @@ for epoch in range(num_epochs):
         pred_fake = D(fake_pair)
         
         g_optimizer.zero_grad()
-
-        g_adv = adv_loss(pred_fake[-1], target_is_real=True, for_discriminator=False) #förstår inte det här steget
+        g_adv = 0.0
+        for pf in pred_fake:
+            g_adv += adv_loss(pf, target_is_real=True, for_discriminator=False) #förstår inte det här steget
+        
         g_pix = pix_loss(fake_output, target)
         
         #Total loss
@@ -151,7 +158,7 @@ row_dict = {
     "pix_loss": "L1Loss",
     "adv_loss": "PatchAdversarialLoss",
     "optimizer": "Adam",
-    "notes": "second gan try",
+    "notes": "use all features of PatchDiscriminator, betas=(0.5,0.999)",
     "weights": f"GAN_{timestamp}_model_weights.pth",
 }
 
