@@ -17,10 +17,9 @@ from collections.abc import Sequence
 import torch
 import torch.nn as nn
 
-from monai.networks.blocks.convolutions import Convolution#, ResidualUnit
+from monai.networks.blocks.convolutions import Convolution, ResidualUnit
 from monai.networks.layers.factories import Act, Norm
 from monai.networks.layers.simplelayers import SkipConnection
-from AdaDM import ResidualUnitAdaDM
 
 __all__ = ["UNet", "Unet"]
 
@@ -209,7 +208,7 @@ class UNet(nn.Module):
         """
         mod: nn.Module
         if self.num_res_units > 0:
-            mod = ResidualUnitAdaDM(
+            mod = ResidualUnit(
                 self.dimensions,
                 in_channels,
                 out_channels,
@@ -260,57 +259,23 @@ class UNet(nn.Module):
         """
         conv: Convolution | nn.Sequential
 
-        if is_top: #remove norm in last layer
-            conv = Convolution(
+        conv = Convolution(
             self.dimensions,
             in_channels,
             out_channels,
             strides=strides,
             kernel_size=self.up_kernel_size,
             act=self.act,
-            norm=None,
+            norm=self.norm,
             dropout=self.dropout,
             bias=self.bias,
             conv_only=is_top and self.num_res_units == 0,
             is_transposed=True,
             adn_ordering=self.adn_ordering,
-            )
-
-            if self.num_res_units > 0:
-                ru = ResidualUnitAdaDM(
-                    self.dimensions,
-                    out_channels,
-                    out_channels,
-                    strides=1,
-                    kernel_size=self.kernel_size,
-                    subunits=1,
-                    act=self.act,
-                    norm=None,
-                    dropout=self.dropout,
-                    bias=self.bias,
-                    last_conv_only=is_top,
-                    adn_ordering=self.adn_ordering,
-                )
-            conv = nn.Sequential(conv, ru)
-        
-        else:
-            conv = Convolution(
-                self.dimensions,
-                in_channels,
-                out_channels,
-                strides=strides,
-                kernel_size=self.up_kernel_size,
-                act=self.act,
-                norm=self.norm,
-                dropout=self.dropout,
-                bias=self.bias,
-                conv_only=is_top and self.num_res_units == 0,
-                is_transposed=True,
-                adn_ordering=self.adn_ordering,
-            )
+        )
 
         if self.num_res_units > 0:
-            ru = ResidualUnitAdaDM(
+            ru = ResidualUnit(
                 self.dimensions,
                 out_channels,
                 out_channels,

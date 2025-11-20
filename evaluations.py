@@ -1,4 +1,6 @@
 import numpy as np
+import torch
+import torch.nn as nn
 from skimage.metrics import structural_similarity, peak_signal_noise_ratio, mean_squared_error, normalized_root_mse
 
 def calculate_metrics(real_images, generated_images):
@@ -31,3 +33,11 @@ def calculate_metrics(real_images, generated_images):
         "nrmse": np.mean(nrmse_list),
         "mse": np.mean(mse_list)
     }
+
+class RMSLELoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.mse = nn.MSELoss()
+        
+    def forward(self, pred, actual):
+        return torch.sqrt(self.mse(torch.log(pred + 1), torch.log(actual + 1)))

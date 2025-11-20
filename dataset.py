@@ -29,7 +29,24 @@ class TrainDataset(Dataset):
         output = torch.from_numpy(output).float()
 
         return input1, input2, output
+    
+class TrainDatasetV2(Dataset):
+    def __init__(self, input, output): 
+        self.input = [patch for img_patches in input for patch in img_patches]
+        self.output = [patch for img_patches in output for patch in img_patches]
 
+    def __len__(self):
+        return len(self.output)
+
+    def __getitem__(self, idx):
+        input = self.input[idx]
+        output = self.output[idx]
+
+        input = torch.from_numpy(input).float()
+        output = torch.from_numpy(output).float()
+
+        return input, output
+        
 class EarlyStopping:
     def __init__(self, patience=5, min_delta=0.0):
         self.patience = patience

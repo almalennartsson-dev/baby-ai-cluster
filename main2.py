@@ -1,7 +1,7 @@
 import pathlib
 import nibabel as nib
-#from monai.networks.nets import UNet
-from unet import UNet
+from monai.networks.nets import UNet
+#from unet import UNet
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -13,7 +13,7 @@ import datetime
 from evaluations import calculate_metrics, RMSLELoss
 from monai.networks.layers.factories import Norm
 from monai.losses.perceptual import PerceptualLoss
-
+import random
 
 print("Start at:", datetime.datetime.now().isoformat())
 #Collect all data files
@@ -23,12 +23,24 @@ assert DATA_DIR.exists(), f"DATA_DIR not found: {DATA_DIR}"
 t1_files = sorted(DATA_DIR.rglob("*T1w.nii.gz"))
 t2_files = sorted(DATA_DIR.rglob("*T2w.nii.gz"))
 t2_LR_files = sorted(DATA_DIR.rglob("*T2w_LR.nii.gz"))
+t2_LR4_files = sorted(DATA_DIR.rglob("*T2w_LR4.nii.gz"))
 files = list(zip(t1_files, t2_files, t2_LR_files))
-
-print(f"T1 files: {len(t1_files)}, T2 files: {len(t2_files)}, T2 LR files: {len(t2_LR_files)}")
-
-#SPLIT DATASET
+files4 = list(zip(t1_files, t2_files, t2_LR4_files))
 train, val, test = split_dataset(files)
+train4, val4, test4 = split_dataset(files4)
+
+train = train + train4
+val = val + val4
+test = test + test4
+
+print(f"T1 files: {len(t1_files)}, T2 files: {len(t2_files)}, T2 LR files: {len(t2_LR_files)}, T2 LR4 files: {len(t2_LR4_files)}")
+print(f"Train size: {len(train)}, Val size: {len(val)}, Test size: {len(test)}")
+
+#SHUFFLE DATA
+random.shuffle(train)
+random.shuffle(val)
+random.shuffle(test)
+
 
 # Smart GPU/CPU detection
 import os
@@ -77,12 +89,12 @@ lpips_loss = PerceptualLoss(
     network_type='medicalnet_resnet10_23datasets',
     is_fake_3d=False,
 ).to(device, dtype=torch.float32)
-w_lpips = 10.0
+w_lpips = 0.1
 print("Loss functions initialized")
 loss_list = []
 val_loss_list = []
 optimizer = optim.Adam(net.parameters(), lr=1e-4)
-num_epochs = 100
+num_epochs = 50
 print(f"Number of epochs: {num_epochs}")
 
 #use_cuda = torch.cuda.is_available()
@@ -102,8 +114,6 @@ for epoch in range(num_epochs):
     #TRAINING
     net.train()
     train_loss = 0.0
-    train_lpips = 0.0
-    train_mse = 0.0
     for batch in train_loader:
         input1, input2, target = batch
         inputs = torch.stack([input1, input2], dim=1).to(device, dtype=torch.float32, non_blocking=True)  # (B, 2, 64, 64, 64)
@@ -118,8 +128,7 @@ for epoch in range(num_epochs):
         optimizer.step()
 
         train_loss += loss.item() * inputs.size(0)
-        train_lpips += perc_loss.item() * inputs.size(0)
-        train_mse += pix_loss.item() * inputs.size(0)
+       
 
     #VALIDATION
     net.eval()
@@ -131,14 +140,10 @@ for epoch in range(num_epochs):
             target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)  # (B, 1, 64, 64, 64)
 
             outputs = net(inputs)
-            pix_loss = loss_fn(outputs, target)
-            perc_loss = lpips_loss(outputs, target)
-            loss = pix_loss + w_lpips * perc_loss
+            loss = loss_fn(outputs, target)
             val_loss += loss.item() * inputs.size(0)
 
     epoch_train_loss = train_loss / len(train_loader.dataset)
-    epoch_train_lpips = train_lpips / len(train_loader.dataset)
-    epoch_train_mse = train_mse / len(train_loader.dataset)
     loss_list.append(epoch_train_loss)
     epoch_val_loss = val_loss / len(val_loader.dataset)
     val_loss_list.append(epoch_val_loss)
@@ -149,7 +154,7 @@ for epoch in range(num_epochs):
         torch.save(net.state_dict(), DATA_DIR / "outputs" / f"{timestamp}_model_weights.pth")
         best_epoch = epoch + 1 # Store the best epoch number
 
-    print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {epoch_train_loss:.4f}, Val Loss: {epoch_val_loss:.4f}, Train LPIPS: {epoch_train_lpips:.4f}, Train MSE: {epoch_train_mse:.4f}")
+    print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {epoch_train_loss:.4f}, Val Loss: {epoch_val_loss:.4f}")
 
     #EARLY STOPPING
     if early_stopping.step(val_loss):
@@ -207,9 +212,9 @@ row_dict = {
     "net spatial_dims": 3,
     "net in_channels": 2,
     "net out_channels": 1,
-    "net channels": (32, 64, 128, 256, 512, 1024),
+    "net channels": (16, 32, 64, 128, 256),
     "net strides": (2, 2, 2, 2),
-    "net num_res_units": 4,
+    "net num_res_units": 2,
     "net norm": None,
     "num_epochs": num_epochs,
     "batch_size": batch_size,
@@ -219,7 +224,7 @@ row_dict = {
     "lpips": None,
     "nrmse": metrics["nrmse"],
     "mse": metrics["mse"],
-    "loss_fn": "lpips",
+    "loss_fn": "MSLELoss",
     "loss_list": loss_list,
     "optimizer": "Adam",
     "masking": "None",
@@ -229,7 +234,7 @@ row_dict = {
     "stop_epoch": epoch + 1,
     "patience": early_stopping.patience,
     "min_delta": early_stopping.min_delta,
-    "notes":"lpips weight 10 and print lpips for val and train",
+    "notes":"try with LR4 augementation",
 }
 
 #create outputs directory if it doesn't exist

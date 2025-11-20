@@ -17,9 +17,9 @@ batch_size = 2
 patch_size = (64, 64, 64)
 stride = (32, 32, 32)
 target_shape = (192, 224, 192) 
-num_epochs = 20
+num_epochs = 50
 timestamp = datetime.datetime.now().isoformat()
-lambda_adv = 0.01  # Weight for adversarial loss
+lambda_adv = 0.005  # Weight for adversarial loss
 
 # Smart GPU/CPU detection
 import os
@@ -47,13 +47,6 @@ D = PatchDiscriminator(
     out_channels=1,
 )
 
-# Define Loss Functions and Optimizers
-adv_loss = PatchAdversarialLoss() #andra parametrar?
-pix_loss = nn.L1Loss()
-
-g_optimizer = optim.Adam(G.parameters(), lr=1e-4, betas=(0.5, 0.999))
-d_optimizer = optim.Adam(D.parameters(), lr=1e-4, betas=(0.5, 0.999))
-
 # Load data - make function of this?
 
 #DATA_DIR = pathlib.Path.home()/"data"/"bobsrepository" #cluster?
@@ -69,11 +62,20 @@ train_t1, train_t2, train_t2_LR = get_patches(train, patch_size, stride, target_
 val_t1, val_t2, val_t2_LR = get_patches(val, patch_size, stride, target_shape, ref_img)
 test_t1, test_t2, test_t2_LR = get_patches(test, patch_size, stride, target_shape, ref_img)
 
+# Load pre-trained weights if available (64 patch size unet)
+G.load_state_dict(torch.load(DATA_DIR/"outputs"/"2025-10-13T21:25:51.380662_model_weights.pth", map_location=device))
+
 # Define dataloaders
 train_dataset = TrainDataset(train_t1, train_t2_LR, train_t2)
 train_loader = DataLoader(train_dataset, batch_size, shuffle=True)
 val_loader = DataLoader(TrainDataset(val_t1, val_t2_LR, val_t2), batch_size, shuffle=True)
 
+# Define Loss Functions and Optimizers
+adv_loss = PatchAdversarialLoss() #andra parametrar?
+pix_loss = nn.L1Loss()
+
+g_optimizer = optim.Adam(G.parameters(), lr=1e-4, betas=(0.5, 0.999))
+d_optimizer = optim.Adam(D.parameters(), lr=1e-4, betas=(0.5, 0.999))
 
 G.to(device, dtype=torch.float32)
 D.to(device, dtype=torch.float32)
@@ -99,14 +101,10 @@ for epoch in range(num_epochs):
         d_optimizer.zero_grad()
         pred_real = D(real_pair)
         pred_fake = D(fake_pair)
-        
-        loss_real = 0.0
-        loss_fake = 0.0
-        for pr, pf in zip(pred_real, pred_fake):
-            loss_real += adv_loss(pr, target_is_real=True, for_discriminator=True)
-            loss_fake += adv_loss(pf, target_is_real=False, for_discriminator=True)
-        loss_real /= len(pred_real)
-        loss_fake /= len(pred_fake)
+
+
+        loss_real = adv_loss(pred_real[-1], target_is_real=True, for_discriminator=True)
+        loss_fake = adv_loss(pred_fake[-1], target_is_real=False, for_discriminator=True)
 
         #Total loss
         loss_D = (loss_real + loss_fake) * 0.5
@@ -120,9 +118,7 @@ for epoch in range(num_epochs):
         pred_fake = D(fake_pair)
         
         g_optimizer.zero_grad()
-        g_adv = 0.0
-        for pf in pred_fake:
-            g_adv += adv_loss(pf, target_is_real=True, for_discriminator=False) #förstår inte det här steget
+        g_adv = adv_loss(pred_fake[-1], target_is_real=True, for_discriminator=False) #förstår inte det här steget
         
         g_pix = pix_loss(fake_output, target)
         
@@ -158,7 +154,7 @@ row_dict = {
     "pix_loss": "L1Loss",
     "adv_loss": "PatchAdversarialLoss",
     "optimizer": "Adam",
-    "notes": "use all features of PatchDiscriminator, betas=(0.5,0.999)",
+    "notes": "new lambda 0.001",
     "weights": f"GAN_{timestamp}_model_weights.pth",
 }
 

@@ -64,20 +64,14 @@ net = UNet(
     spatial_dims=3,
     in_channels=2,
     out_channels=1,
-    channels=(16, 32, 64, 128, 256),
-    strides=(2, 2, 2, 2),
-    num_res_units=2,
+    channels=(32, 64, 128, 256, 512, 1024),
+    strides=(2, 2, 2, 2, 2),
+    num_res_units=4,
     norm=None,
 )
 net.to(device, dtype=torch.float32)
 print("Network initialized")
 loss_fn = nn.MSELoss()
-lpips_loss = PerceptualLoss(
-   spatial_dims=3,
-    network_type='medicalnet_resnet10_23datasets',
-    is_fake_3d=False,
-).to(device, dtype=torch.float32)
-w_lpips = 10.0
 print("Loss functions initialized")
 loss_list = []
 val_loss_list = []
@@ -85,15 +79,6 @@ optimizer = optim.Adam(net.parameters(), lr=1e-4)
 num_epochs = 100
 print(f"Number of epochs: {num_epochs}")
 
-#use_cuda = torch.cuda.is_available()
-#print(f"Using CUDA: {use_cuda}")
-#device = torch.device("cuda" if use_cuda else "cpu")
-#device = torch.device("cpu") #cluster?
-
-
-
-#lpips_loss = lpips_loss.to(device=device, dtype=torch.float32)
-#lpips_loss.eval()
 timestamp = datetime.datetime.now().isoformat()
 best_val_loss = float('inf')
 early_stopping = EarlyStopping(patience=5, min_delta=0.0)
@@ -102,8 +87,6 @@ for epoch in range(num_epochs):
     #TRAINING
     net.train()
     train_loss = 0.0
-    train_lpips = 0.0
-    train_mse = 0.0
     for batch in train_loader:
         input1, input2, target = batch
         inputs = torch.stack([input1, input2], dim=1).to(device, dtype=torch.float32, non_blocking=True)  # (B, 2, 64, 64, 64)
@@ -111,15 +94,12 @@ for epoch in range(num_epochs):
 
         optimizer.zero_grad(set_to_none=True)
         outputs = net(inputs)
-        pix_loss = loss_fn(outputs, target)
-        perc_loss = lpips_loss(outputs, target)
-        loss = pix_loss + w_lpips * perc_loss
+        loss = loss_fn(outputs, target)
         loss.backward()
         optimizer.step()
 
         train_loss += loss.item() * inputs.size(0)
-        train_lpips += perc_loss.item() * inputs.size(0)
-        train_mse += pix_loss.item() * inputs.size(0)
+       
 
     #VALIDATION
     net.eval()
@@ -131,14 +111,10 @@ for epoch in range(num_epochs):
             target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)  # (B, 1, 64, 64, 64)
 
             outputs = net(inputs)
-            pix_loss = loss_fn(outputs, target)
-            perc_loss = lpips_loss(outputs, target)
-            loss = pix_loss + w_lpips * perc_loss
+            loss = loss_fn(outputs, target)
             val_loss += loss.item() * inputs.size(0)
 
     epoch_train_loss = train_loss / len(train_loader.dataset)
-    epoch_train_lpips = train_lpips / len(train_loader.dataset)
-    epoch_train_mse = train_mse / len(train_loader.dataset)
     loss_list.append(epoch_train_loss)
     epoch_val_loss = val_loss / len(val_loader.dataset)
     val_loss_list.append(epoch_val_loss)
@@ -149,7 +125,7 @@ for epoch in range(num_epochs):
         torch.save(net.state_dict(), DATA_DIR / "outputs" / f"{timestamp}_model_weights.pth")
         best_epoch = epoch + 1 # Store the best epoch number
 
-    print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {epoch_train_loss:.4f}, Val Loss: {epoch_val_loss:.4f}, Train LPIPS: {epoch_train_lpips:.4f}, Train MSE: {epoch_train_mse:.4f}")
+    print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {epoch_train_loss:.4f}, Val Loss: {epoch_val_loss:.4f}")
 
     #EARLY STOPPING
     if early_stopping.step(val_loss):
@@ -165,9 +141,9 @@ net = UNet(
     spatial_dims=3,
     in_channels=2,
     out_channels=1,
-    channels=(16, 32, 64, 128, 256),
-    strides=(2, 2, 2, 2),
-    num_res_units=2,
+    channels=(32, 64, 128, 256, 512, 1024),
+    strides=(2, 2, 2, 2, 2),
+    num_res_units=4, 
     norm=None,
 )
 
@@ -219,7 +195,7 @@ row_dict = {
     "lpips": None,
     "nrmse": metrics["nrmse"],
     "mse": metrics["mse"],
-    "loss_fn": "lpips",
+    "loss_fn": "mse",
     "loss_list": loss_list,
     "optimizer": "Adam",
     "masking": "None",
@@ -229,7 +205,7 @@ row_dict = {
     "stop_epoch": epoch + 1,
     "patience": early_stopping.patience,
     "min_delta": early_stopping.min_delta,
-    "notes":"lpips weight 10 and print lpips for val and train",
+    "notes":"deeper unet",
 }
 
 #create outputs directory if it doesn't exist
