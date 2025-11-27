@@ -64,9 +64,9 @@ net = UNet(
     spatial_dims=3,
     in_channels=2,
     out_channels=1,
-    channels=(16, 32, 64, 128, 256),
-    strides=(2, 2, 2, 2),
-    num_res_units=2,
+    channels=(32, 64, 128, 256, 512, 1024),
+    strides=(2, 2, 2, 2, 2),
+    num_res_units=4,
     norm=None,
 )
 net.to(device, dtype=torch.float32)
@@ -77,7 +77,7 @@ lpips_loss = PerceptualLoss(
     network_type='medicalnet_resnet10_23datasets',
     is_fake_3d=False,
 ).to(device, dtype=torch.float32)
-w_lpips = 10.0
+w_lpips = 0.1
 print("Loss functions initialized")
 loss_list = []
 val_loss_list = []
@@ -165,9 +165,9 @@ net = UNet(
     spatial_dims=3,
     in_channels=2,
     out_channels=1,
-    channels=(16, 32, 64, 128, 256),
-    strides=(2, 2, 2, 2),
-    num_res_units=2,
+    channels=(32, 64, 128, 256, 512, 1024),
+    strides=(2, 2, 2, 2, 2),
+    num_res_units=4,
     norm=None,
 )
 
@@ -208,8 +208,8 @@ row_dict = {
     "net in_channels": 2,
     "net out_channels": 1,
     "net channels": (32, 64, 128, 256, 512, 1024),
-    "net strides": (2, 2, 2, 2),
-    "net num_res_units": 4,
+    "net strides": (2, 2, 2, 2, 2),
+    "net num_res_units": 6,
     "net norm": None,
     "num_epochs": num_epochs,
     "batch_size": batch_size,
@@ -219,7 +219,7 @@ row_dict = {
     "lpips": None,
     "nrmse": metrics["nrmse"],
     "mse": metrics["mse"],
-    "loss_fn": "lpips",
+    "loss_fn": "lpips (w=0.1) + mse",
     "loss_list": loss_list,
     "optimizer": "Adam",
     "masking": "None",
@@ -229,7 +229,7 @@ row_dict = {
     "stop_epoch": epoch + 1,
     "patience": early_stopping.patience,
     "min_delta": early_stopping.min_delta,
-    "notes":"lpips weight 10 and print lpips for val and train",
+    "notes":"deep unet with lpips and mse",
 }
 
 #create outputs directory if it doesn't exist

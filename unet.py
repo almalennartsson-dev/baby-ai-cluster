@@ -16,6 +16,7 @@ from collections.abc import Sequence
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from monai.networks.blocks.convolutions import Convolution, ResidualUnit
 from monai.networks.layers.factories import Act, Norm
@@ -297,5 +298,48 @@ class UNet(nn.Module):
         x = self.model(x)
         return x
 
-
 Unet = UNet
+
+class ResBlock3D(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.conv1 = nn.Conv3d(channels, channels, 3, padding=1)
+        self.conv2 = nn.Conv3d(channels, channels, 3, padding=1)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        y = self.relu(self.conv1(x))
+        y = self.conv2(y)
+        return x + y
+
+class MergeNet3D(nn.Module):
+    def __init__(self, in_channels=2, num_filters=32, num_res_blocks=8):
+        super().__init__()
+        # First merge conv
+        self.conv_in = nn.Conv3d(in_channels, num_filters, 3, padding=1)
+
+        # Edge-only skip conv
+        self.edge_conv = nn.Conv3d(1, num_filters, 3, padding=1)
+
+        # Residual blocks
+        self.resblocks = nn.Sequential(*[
+            ResBlock3D(num_filters) for _ in range(num_res_blocks)
+        ])
+
+        # Final output conv
+        self.conv_out = nn.Conv3d(num_filters, 1, 3, padding=1)
+
+    def forward(self, sr, edges):
+        """
+        sr:     (B, 1, D, H, W)  predicted SR volume
+        edges:  (B, 1, D, H, W)  ground-truth or predicted edge map
+        """
+        x = torch.cat([sr, edges], dim=1)      # (B,2,DHW)
+
+        c = self.conv_in(x)                    # shallow merge
+        b = self.resblocks(c)                  # deep refinement
+        a = self.edge_conv(edges)              # edge skip path
+
+        out = c + b + a
+        out = self.conv_out(out)
+        return out

@@ -1,18 +1,19 @@
 import pathlib
 import nibabel as nib
-#from monai.networks.nets import UNet
-from unet import UNet
+from monai.networks.nets import UNet
+#from unet import UNet
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from dataset import TrainDataset, EarlyStopping
+from dataset import TrainDataset, TrainDatasetV2, EarlyStopping
 from preprocessing import create_and_save_LR_imgs, reconstruct_from_patches, split_dataset, get_patches
 from file_structure import append_row
 import datetime
 from evaluations import calculate_metrics, RMSLELoss
 from monai.networks.layers.factories import Norm
-from monai.losses.perceptual import PerceptualLoss
+#from monai.losses.perceptual import PerceptualLoss
+import random
 
 
 print("Start at:", datetime.datetime.now().isoformat())
@@ -23,12 +24,23 @@ assert DATA_DIR.exists(), f"DATA_DIR not found: {DATA_DIR}"
 t1_files = sorted(DATA_DIR.rglob("*T1w.nii.gz"))
 t2_files = sorted(DATA_DIR.rglob("*T2w.nii.gz"))
 t2_LR_files = sorted(DATA_DIR.rglob("*T2w_LR.nii.gz"))
+t2_LR4_files = sorted(DATA_DIR.rglob("*T2w_LR4.nii.gz"))
 files = list(zip(t1_files, t2_files, t2_LR_files))
-
-print(f"T1 files: {len(t1_files)}, T2 files: {len(t2_files)}, T2 LR files: {len(t2_LR_files)}")
-
-#SPLIT DATASET
+files4 = list(zip(t1_files, t2_files, t2_LR4_files))
 train, val, test = split_dataset(files)
+train4, val4, test4 = split_dataset(files4)
+
+train = train + train4
+val = val + val4
+test = test + test4
+
+print(f"T1 files: {len(t1_files)}, T2 files: {len(t2_files)}, T2 LR files: {len(t2_LR_files)}, T2 LR4 files: {len(t2_LR4_files)}")
+print(f"Train size: {len(train)}, Val size: {len(val)}, Test size: {len(test)}")
+
+#SHUFFLE DATA
+random.shuffle(train)
+random.shuffle(val)
+random.shuffle(test)
 
 # Smart GPU/CPU detection
 import os
@@ -46,13 +58,6 @@ patch_size = (32, 32, 32)
 stride = (16, 16, 16)
 ref_img = nib.load(str(t1_files[0]))
 target_shape = (192, 224, 192) 
-
-net_channels = (32, 64, 128, 256, 512, 1024)
-net_strides = (2, 2, 2, 2, 2)
-net_res_units = 20
-note = "deep unet with 20 res units"
-print(note)
-
 train_t1, train_t2, train_t2_LR = get_patches(train, patch_size, stride, target_shape, ref_img)
 val_t1, val_t2, val_t2_LR = get_patches(val, patch_size, stride, target_shape, ref_img)
 test_t1, test_t2, test_t2_LR = get_patches(test, patch_size, stride, target_shape, ref_img)
@@ -62,40 +67,33 @@ print(f"Train patches: {len(train_t1)}, Val patches: {len(val_t1)}, Test patches
 #NETWORK TRAINING
 batch_size = 2
 
-train_dataset = TrainDataset(train_t1, train_t2_LR, train_t2)
+train_dataset = TrainDatasetV2(train_t2_LR, train_t2)
 train_loader = DataLoader(train_dataset, batch_size, shuffle=True)
-val_loader = DataLoader(TrainDataset(val_t1, val_t2_LR, val_t2), batch_size, shuffle=True)
+val_loader = DataLoader(TrainDatasetV2(val_t2_LR, val_t2), batch_size, shuffle=True)
 
 print(f"Number of training batches: {len(train_loader)}")
 net = UNet(
     spatial_dims=3,
-    in_channels=2,
+    in_channels=1,
     out_channels=1,
-    channels=net_channels,
-    strides=net_strides,
-    num_res_units=net_res_units,
+    channels=(32, 64, 128, 256, 512, 1024),
+    strides=(2, 2, 2, 2, 2),
+    num_res_units=6,
     norm=None,
 )
 net.to(device, dtype=torch.float32)
 print("Network initialized")
-print(net)
+
 loss_fn = nn.MSELoss()
 print("Loss functions initialized")
+
 loss_list = []
 val_loss_list = []
 optimizer = optim.Adam(net.parameters(), lr=1e-4)
-num_epochs = 100
+num_epochs = 50
 print(f"Number of epochs: {num_epochs}")
 
-#use_cuda = torch.cuda.is_available()
-#print(f"Using CUDA: {use_cuda}")
-#device = torch.device("cuda" if use_cuda else "cpu")
-#device = torch.device("cpu") #cluster?
 
-
-
-#lpips_loss = lpips_loss.to(device=device, dtype=torch.float32)
-#lpips_loss.eval()
 timestamp = datetime.datetime.now().isoformat()
 best_val_loss = float('inf')
 early_stopping = EarlyStopping(patience=5, min_delta=0.0)
@@ -105,30 +103,31 @@ for epoch in range(num_epochs):
     net.train()
     train_loss = 0.0
     for batch in train_loader:
-        input1, input2, target = batch
-        inputs = torch.stack([input1, input2], dim=1).to(device, dtype=torch.float32, non_blocking=True)  # (B, 2, 64, 64, 64)
+        input, target = batch
+        input = input.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)  # (B, 1, 64, 64, 64)
         target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)  # (B, 1, 64, 64, 64)
 
         optimizer.zero_grad(set_to_none=True)
-        outputs = net(inputs)
+        outputs = net(input)
         loss = loss_fn(outputs, target)
         loss.backward()
         optimizer.step()
 
-        train_loss += loss.item() * inputs.size(0)
+        train_loss += loss.item() * input.size(0)
+       
 
     #VALIDATION
     net.eval()
     with torch.no_grad():
         val_loss = 0.0
         for batch in val_loader:
-            input1, input2, target = batch
-            inputs = torch.stack([input1, input2], dim=1).to(device, dtype=torch.float32, non_blocking=True)  # (B, 2, 64, 64, 64)
+            input, target = batch
+            input = input.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)  # (B, 1, 64, 64, 64)
             target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)  # (B, 1, 64, 64, 64)
 
-            outputs = net(inputs)
+            outputs = net(input)
             loss = loss_fn(outputs, target)
-            val_loss += loss.item() * inputs.size(0)
+            val_loss += loss.item() * input.size(0)
 
     epoch_train_loss = train_loss / len(train_loader.dataset)
     loss_list.append(epoch_train_loss)
@@ -155,11 +154,11 @@ real_images = []
 # Load the best model for testing
 net = UNet(
     spatial_dims=3,
-    in_channels=2,
+    in_channels=1,
     out_channels=1,
-    channels=net_channels,
-    strides=net_strides,
-    num_res_units=net_res_units,
+    channels=(32, 64, 128, 256, 512, 1024),
+    strides=(2, 2, 2, 2, 2),
+    num_res_units=6,
     norm=None,
 )
 
@@ -170,20 +169,19 @@ with torch.no_grad():
     for i in range(len(test_t1)):
         all_outputs = []
         for j in range(len(test_t1[0])):
-            input1 = torch.tensor(test_t1[i][j]).float()
-            input2 = torch.tensor(test_t2_LR[i][j]).float()
-            inputs = torch.stack([input1, input2], dim=0).unsqueeze(0)  # (1, 2, 16, 16, 16)
-            inputs = inputs.to(device, dtype=torch.float32)  # Move to device!
-            output = net(inputs)
+            input = torch.tensor(test_t1[i][j]).float()
+            input = input.unsqueeze(0).unsqueeze(0).to(device, dtype=torch.float32)  # (1, 1, 16, 16, 16)
+            output = net(input)
             all_outputs.append(output.squeeze(0).squeeze(0).cpu().numpy())  # (64, 64, 64)
         gen_reconstructed = reconstruct_from_patches(all_outputs, target_shape, stride)
         real_reconstructed = reconstruct_from_patches(test_t2[i], target_shape, stride)
         generated_images.append(gen_reconstructed)
         real_images.append(real_reconstructed)
-        print(f"Processed test image {i+1}/{len(test_t1)}")
+        print(f"Processed test image {i+1}/{len(test_t2)}")
 
 metrics = calculate_metrics(generated_images, real_images)
-
+note = "input t2 LR only, LR4 augementation and less deep unet, 6 res units"
+print(note)
 # SAVE RESULTS
 
 row_dict = {
@@ -199,9 +197,9 @@ row_dict = {
     "net spatial_dims": 3,
     "net in_channels": 2,
     "net out_channels": 1,
-    "net channels": net_channels,
-    "net strides": net_strides,
-    "net num_res_units": net_res_units,
+    "net channels": (32, 64, 128, 256, 512, 1024),
+    "net strides": (2, 2, 2, 2, 2),
+    "net num_res_units": 6,
     "net norm": None,
     "num_epochs": num_epochs,
     "batch_size": batch_size,
@@ -211,7 +209,7 @@ row_dict = {
     "lpips": None,
     "nrmse": metrics["nrmse"],
     "mse": metrics["mse"],
-    "loss_fn": "mse",
+    "loss_fn": "MSLELoss",
     "loss_list": loss_list,
     "optimizer": "Adam",
     "masking": "None",
@@ -221,7 +219,7 @@ row_dict = {
     "stop_epoch": epoch + 1,
     "patience": early_stopping.patience,
     "min_delta": early_stopping.min_delta,
-    "notes":note,
+    "notes": note,
 }
 
 #create outputs directory if it doesn't exist

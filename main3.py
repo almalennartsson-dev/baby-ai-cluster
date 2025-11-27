@@ -46,6 +46,13 @@ patch_size = (32, 32, 32)
 stride = (16, 16, 16)
 ref_img = nib.load(str(t1_files[0]))
 target_shape = (192, 224, 192) 
+
+net_channels = (32, 64, 128, 256, 512, 1024)
+net_strides = (2, 2, 2, 2, 2)
+net_res_units = 10
+note = "input t2 LR only"
+print(note)
+
 train_t1, train_t2, train_t2_LR = get_patches(train, patch_size, stride, target_shape, ref_img)
 val_t1, val_t2, val_t2_LR = get_patches(val, patch_size, stride, target_shape, ref_img)
 test_t1, test_t2, test_t2_LR = get_patches(test, patch_size, stride, target_shape, ref_img)
@@ -55,18 +62,18 @@ print(f"Train patches: {len(train_t1)}, Val patches: {len(val_t1)}, Test patches
 #NETWORK TRAINING
 batch_size = 2
 
-train_dataset = TrainDatasetV2(train_t1, train_t2)
+train_dataset = TrainDatasetV2(train_t2_LR, train_t2)
 train_loader = DataLoader(train_dataset, batch_size, shuffle=True)
-val_loader = DataLoader(TrainDatasetV2(val_t1, val_t2), batch_size, shuffle=True)
+val_loader = DataLoader(TrainDatasetV2(val_t2_LR, val_t2), batch_size, shuffle=True)
 
 print(f"Number of training batches: {len(train_loader)}")
 net = UNet(
     spatial_dims=3,
     in_channels=1,
     out_channels=1,
-    channels=(16, 32, 64, 128, 256),
-    strides=(2, 2, 2, 2),
-    num_res_units=2,
+    channels=net_channels,
+    strides=net_strides,
+    num_res_units=net_res_units,
     norm=None,
 )
 net.to(device, dtype=torch.float32)
@@ -144,9 +151,9 @@ net = UNet(
     spatial_dims=3,
     in_channels=1,
     out_channels=1,
-    channels=(16, 32, 64, 128, 256),
-    strides=(2, 2, 2, 2),
-    num_res_units=2,
+    channels=net_channels,
+    strides=net_strides,
+    num_res_units=net_res_units,
     norm=None,
 )
 
@@ -154,10 +161,10 @@ net.load_state_dict(torch.load(DATA_DIR / "outputs" / f"{timestamp}_model_weight
 net.to(device, dtype=torch.float32)
 net.eval() # could be not the best model, but the last one. FIX THIS!
 with torch.no_grad():
-    for i in range(len(test_t1)):
+    for i in range(len(test_t2_LR)):
         all_outputs = []
-        for j in range(len(test_t1[0])):
-            input = torch.tensor(test_t1[i][j]).float()
+        for j in range(len(test_t2_LR[0])):
+            input = torch.tensor(test_t2_LR[i][j]).float()
             input = input.unsqueeze(0).unsqueeze(0).to(device, dtype=torch.float32)  # (1, 1, 16, 16, 16)
             output = net(input)
             all_outputs.append(output.squeeze(0).squeeze(0).cpu().numpy())  # (64, 64, 64)
@@ -184,9 +191,9 @@ row_dict = {
     "net spatial_dims": 3,
     "net in_channels": 2,
     "net out_channels": 1,
-    "net channels": (16, 32, 64, 128, 256),
-    "net strides": (2, 2, 2, 2),
-    "net num_res_units": 2,
+    "net channels": net_channels,
+    "net strides": net_strides,
+    "net num_res_units": net_res_units,
     "net norm": None,
     "num_epochs": num_epochs,
     "batch_size": batch_size,
@@ -206,7 +213,7 @@ row_dict = {
     "stop_epoch": epoch + 1,
     "patience": early_stopping.patience,
     "min_delta": early_stopping.min_delta,
-    "notes":"input t1 HR only",
+    "notes": note,
 }
 
 #create outputs directory if it doesn't exist

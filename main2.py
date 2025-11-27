@@ -15,6 +15,8 @@ from monai.networks.layers.factories import Norm
 from monai.losses.perceptual import PerceptualLoss
 import random
 
+
+
 print("Start at:", datetime.datetime.now().isoformat())
 #Collect all data files
 #DATA_DIR = pathlib.Path.home()/"data"/"bobsrepository" #cluster?
@@ -58,6 +60,13 @@ patch_size = (32, 32, 32)
 stride = (16, 16, 16)
 ref_img = nib.load(str(t1_files[0]))
 target_shape = (192, 224, 192) 
+
+net_channels = (16, 32, 64, 128, 256)
+net_strides = (2, 2, 2, 2)
+net_res_units = 2
+note = "LR4 augementation and old unet design"
+print(note)
+
 train_t1, train_t2, train_t2_LR = get_patches(train, patch_size, stride, target_shape, ref_img)
 val_t1, val_t2, val_t2_LR = get_patches(val, patch_size, stride, target_shape, ref_img)
 test_t1, test_t2, test_t2_LR = get_patches(test, patch_size, stride, target_shape, ref_img)
@@ -76,20 +85,15 @@ net = UNet(
     spatial_dims=3,
     in_channels=2,
     out_channels=1,
-    channels=(16, 32, 64, 128, 256),
-    strides=(2, 2, 2, 2),
-    num_res_units=2,
+    channels=net_channels,
+    strides=net_strides,
+    num_res_units=net_res_units,
     norm=None,
 )
 net.to(device, dtype=torch.float32)
 print("Network initialized")
 loss_fn = nn.MSELoss()
-lpips_loss = PerceptualLoss(
-   spatial_dims=3,
-    network_type='medicalnet_resnet10_23datasets',
-    is_fake_3d=False,
-).to(device, dtype=torch.float32)
-w_lpips = 0.1
+
 print("Loss functions initialized")
 loss_list = []
 val_loss_list = []
@@ -97,15 +101,6 @@ optimizer = optim.Adam(net.parameters(), lr=1e-4)
 num_epochs = 50
 print(f"Number of epochs: {num_epochs}")
 
-#use_cuda = torch.cuda.is_available()
-#print(f"Using CUDA: {use_cuda}")
-#device = torch.device("cuda" if use_cuda else "cpu")
-#device = torch.device("cpu") #cluster?
-
-
-
-#lpips_loss = lpips_loss.to(device=device, dtype=torch.float32)
-#lpips_loss.eval()
 timestamp = datetime.datetime.now().isoformat()
 best_val_loss = float('inf')
 early_stopping = EarlyStopping(patience=5, min_delta=0.0)
@@ -121,9 +116,7 @@ for epoch in range(num_epochs):
 
         optimizer.zero_grad(set_to_none=True)
         outputs = net(inputs)
-        pix_loss = loss_fn(outputs, target)
-        perc_loss = lpips_loss(outputs, target)
-        loss = pix_loss + w_lpips * perc_loss
+        loss = loss_fn(outputs, target)
         loss.backward()
         optimizer.step()
 
@@ -170,9 +163,9 @@ net = UNet(
     spatial_dims=3,
     in_channels=2,
     out_channels=1,
-    channels=(16, 32, 64, 128, 256),
-    strides=(2, 2, 2, 2),
-    num_res_units=2,
+    channels=net_channels,
+    strides=net_strides,
+    num_res_units=net_res_units,
     norm=None,
 )
 
@@ -212,9 +205,9 @@ row_dict = {
     "net spatial_dims": 3,
     "net in_channels": 2,
     "net out_channels": 1,
-    "net channels": (16, 32, 64, 128, 256),
-    "net strides": (2, 2, 2, 2),
-    "net num_res_units": 2,
+    "net channels": net_channels,
+    "net strides": net_strides,
+    "net num_res_units": net_res_units,
     "net norm": None,
     "num_epochs": num_epochs,
     "batch_size": batch_size,
@@ -234,7 +227,7 @@ row_dict = {
     "stop_epoch": epoch + 1,
     "patience": early_stopping.patience,
     "min_delta": early_stopping.min_delta,
-    "notes":"try with LR4 augementation",
+    "notes": note,
 }
 
 #create outputs directory if it doesn't exist

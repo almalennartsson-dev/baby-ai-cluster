@@ -64,9 +64,9 @@ net = UNet(
     spatial_dims=3,
     in_channels=2,
     out_channels=1,
-    channels=(32, 64, 128, 256, 512, 1024),
-    strides=(2, 2, 2, 2, 2),
-    num_res_units=4,
+    channels=(32, 64, 128, 256, 512),
+    strides=(2, 2, 2, 2),
+    num_res_units=10, 
     norm=None,
 )
 net.to(device, dtype=torch.float32)
@@ -141,9 +141,9 @@ net = UNet(
     spatial_dims=3,
     in_channels=2,
     out_channels=1,
-    channels=(32, 64, 128, 256, 512, 1024),
-    strides=(2, 2, 2, 2, 2),
-    num_res_units=4, 
+    channels=(32, 64, 128, 256, 512),
+    strides=(2, 2, 2, 2),
+    num_res_units=10, 
     norm=None,
 )
 
@@ -183,9 +183,9 @@ row_dict = {
     "net spatial_dims": 3,
     "net in_channels": 2,
     "net out_channels": 1,
-    "net channels": (32, 64, 128, 256, 512, 1024),
+    "net channels": (32, 64, 128, 256, 512),
     "net strides": (2, 2, 2, 2),
-    "net num_res_units": 4,
+    "net num_res_units": 10,
     "net norm": None,
     "num_epochs": num_epochs,
     "batch_size": batch_size,
@@ -205,7 +205,7 @@ row_dict = {
     "stop_epoch": epoch + 1,
     "patience": early_stopping.patience,
     "min_delta": early_stopping.min_delta,
-    "notes":"deeper unet",
+    "notes":"res: 10, shallower net",
 }
 
 #create outputs directory if it doesn't exist

@@ -1,10 +1,11 @@
 import pathlib
 import nibabel as nib
 #from monai.networks.nets import UNet
-from unet import UNet
+from unet import UNet, MergeNet3D
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import kornia
 from torch.utils.data import DataLoader
 from dataset import TrainDataset, EarlyStopping
 from preprocessing import create_and_save_LR_imgs, reconstruct_from_patches, split_dataset, get_patches
@@ -46,13 +47,6 @@ patch_size = (32, 32, 32)
 stride = (16, 16, 16)
 ref_img = nib.load(str(t1_files[0]))
 target_shape = (192, 224, 192) 
-
-net_channels = (32, 64, 128, 256, 512, 1024)
-net_strides = (2, 2, 2, 2, 2)
-net_res_units = 20
-note = "deep unet with 20 res units"
-print(note)
-
 train_t1, train_t2, train_t2_LR = get_patches(train, patch_size, stride, target_shape, ref_img)
 val_t1, val_t2, val_t2_LR = get_patches(val, patch_size, stride, target_shape, ref_img)
 test_t1, test_t2, test_t2_LR = get_patches(test, patch_size, stride, target_shape, ref_img)
@@ -60,7 +54,7 @@ test_t1, test_t2, test_t2_LR = get_patches(test, patch_size, stride, target_shap
 print(f"Train patches: {len(train_t1)}, Val patches: {len(val_t1)}, Test patches: {len(test_t1)}")
 
 #NETWORK TRAINING
-batch_size = 2
+batch_size = 4
 
 train_dataset = TrainDataset(train_t1, train_t2_LR, train_t2)
 train_loader = DataLoader(train_dataset, batch_size, shuffle=True)
@@ -71,14 +65,13 @@ net = UNet(
     spatial_dims=3,
     in_channels=2,
     out_channels=1,
-    channels=net_channels,
-    strides=net_strides,
-    num_res_units=net_res_units,
+    channels=(16, 32, 64, 128, 256),
+    strides=(2, 2, 2, 2),
+    num_res_units=2,
     norm=None,
 )
 net.to(device, dtype=torch.float32)
 print("Network initialized")
-print(net)
 loss_fn = nn.MSELoss()
 print("Loss functions initialized")
 loss_list = []
@@ -87,15 +80,6 @@ optimizer = optim.Adam(net.parameters(), lr=1e-4)
 num_epochs = 100
 print(f"Number of epochs: {num_epochs}")
 
-#use_cuda = torch.cuda.is_available()
-#print(f"Using CUDA: {use_cuda}")
-#device = torch.device("cuda" if use_cuda else "cpu")
-#device = torch.device("cpu") #cluster?
-
-
-
-#lpips_loss = lpips_loss.to(device=device, dtype=torch.float32)
-#lpips_loss.eval()
 timestamp = datetime.datetime.now().isoformat()
 best_val_loss = float('inf')
 early_stopping = EarlyStopping(patience=5, min_delta=0.0)
@@ -111,7 +95,13 @@ for epoch in range(num_epochs):
 
         optimizer.zero_grad(set_to_none=True)
         outputs = net(inputs)
-        loss = loss_fn(outputs, target)
+
+        gt_grad = kornia.filters.spatial_gradient3d(target)
+        pred_grad = kornia.filters.spatial_gradient3d(outputs)
+
+        grad_loss = loss_fn(pred_grad, gt_grad)
+        pix_loss = loss_fn(outputs, target)
+        loss = pix_loss + grad_loss
         loss.backward()
         optimizer.step()
 
@@ -157,9 +147,9 @@ net = UNet(
     spatial_dims=3,
     in_channels=2,
     out_channels=1,
-    channels=net_channels,
-    strides=net_strides,
-    num_res_units=net_res_units,
+    channels=(16, 32, 64, 128, 256),
+    strides=(2, 2, 2, 2),
+    num_res_units=2,
     norm=None,
 )
 
@@ -199,9 +189,9 @@ row_dict = {
     "net spatial_dims": 3,
     "net in_channels": 2,
     "net out_channels": 1,
-    "net channels": net_channels,
-    "net strides": net_strides,
-    "net num_res_units": net_res_units,
+    "net channels": (32, 64, 128, 256, 512),
+    "net strides": (2, 2, 2, 2),
+    "net num_res_units": 2,
     "net norm": None,
     "num_epochs": num_epochs,
     "batch_size": batch_size,
@@ -221,7 +211,7 @@ row_dict = {
     "stop_epoch": epoch + 1,
     "patience": early_stopping.patience,
     "min_delta": early_stopping.min_delta,
-    "notes":note,
+    "notes":"add grad loss in training loop",
 }
 
 #create outputs directory if it doesn't exist
