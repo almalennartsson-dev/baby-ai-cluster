@@ -16,13 +16,11 @@ from monai.losses.perceptual import PerceptualLoss
 
 
 print("Start at:", datetime.datetime.now().isoformat())
-#Collect all data files
-#DATA_DIR = pathlib.Path.home()/"data"/"bobsrepository" #cluster?
 DATA_DIR = pathlib.Path("/proj/synthetic_alzheimer/users/x_almle/bobsrepository") #cluster?
 assert DATA_DIR.exists(), f"DATA_DIR not found: {DATA_DIR}"
 t1_files = sorted(DATA_DIR.rglob("*T1w.nii.gz"))
 t2_files = sorted(DATA_DIR.rglob("*T2w.nii.gz"))
-t2_LR_files = sorted(DATA_DIR.rglob("*T2w_LR.nii.gz"))
+t2_LR_files = sorted(DATA_DIR.rglob("*T2w_simple_LR.nii.gz"))
 files = list(zip(t1_files, t2_files, t2_LR_files))
 
 print(f"T1 files: {len(t1_files)}, T2 files: {len(t2_files)}, T2 LR files: {len(t2_LR_files)}")
@@ -49,13 +47,13 @@ target_shape = (192, 224, 192)
 
 net_channels = (32, 64, 128, 256, 512, 1024)
 net_strides = (2, 2, 2, 2, 2)
-net_res_units = 20
-note = "deep unet with 20 res units"
+net_res_units = 10
+note = "test with simple LR images"
 print(note)
 
-train_t1, train_t2, train_t2_LR = get_patches(train, patch_size, stride, target_shape, ref_img)
-val_t1, val_t2, val_t2_LR = get_patches(val, patch_size, stride, target_shape, ref_img)
-test_t1, test_t2, test_t2_LR = get_patches(test, patch_size, stride, target_shape, ref_img)
+train_t1, train_t2, train_t2_LR = get_patches(train, patch_size, stride, target_shape)
+val_t1, val_t2, val_t2_LR = get_patches(val, patch_size, stride, target_shape)
+test_t1, test_t2, test_t2_LR = get_patches(test, patch_size, stride, target_shape)
 
 print(f"Train patches: {len(train_t1)}, Val patches: {len(val_t1)}, Test patches: {len(test_t1)}")
 

@@ -15,26 +15,57 @@ from monai.networks.layers.factories import Norm
 #from monai.losses.perceptual import PerceptualLoss
 import random
 
-
 print("Start at:", datetime.datetime.now().isoformat())
-#Collect all data files
-#DATA_DIR = pathlib.Path.home()/"data"/"bobsrepository" #cluster?
-DATA_DIR = pathlib.Path("/proj/synthetic_alzheimer/users/x_almle/bobsrepository") #cluster?
+note = "Augmenting with 6x the data"
+net_channels = (32, 64, 128, 256, 512, 1024)
+net_strides = (2, 2, 2, 2, 2)
+net_res_units = 10
+norm = None
+spatial_dims = 3
+in_channels = 2
+out_channels = 1
+patch_size = (32, 32, 32)
+stride = (16, 16, 16)
+target_shape = (192, 224, 192) 
+batch_size = 2
+num_epochs = 50
+print(note)
+
+#COLLECT DATA FILES
+DATA_DIR = pathlib.Path("/proj/synthetic_alzheimer/users/x_almle/bobsrepository") 
 assert DATA_DIR.exists(), f"DATA_DIR not found: {DATA_DIR}"
+
 t1_files = sorted(DATA_DIR.rglob("*T1w.nii.gz"))
 t2_files = sorted(DATA_DIR.rglob("*T2w.nii.gz"))
-t2_LR_files = sorted(DATA_DIR.rglob("*T2w_LR.nii.gz"))
-t2_LR4_files = sorted(DATA_DIR.rglob("*T2w_LR4.nii.gz"))
-files = list(zip(t1_files, t2_files, t2_LR_files))
-files4 = list(zip(t1_files, t2_files, t2_LR4_files))
-train, val, test = split_dataset(files)
-train4, val4, test4 = split_dataset(files4)
 
-train = train + train4
-val = val + val4
-test = test + test4
+EVEN_DIR = DATA_DIR / "even"
+ODD_DIR = DATA_DIR / "odd"
 
-print(f"T1 files: {len(t1_files)}, T2 files: {len(t2_files)}, T2 LR files: {len(t2_LR_files)}, T2 LR4 files: {len(t2_LR4_files)}")
+t2_LR_even_files = sorted(EVEN_DIR.rglob("*T2w_LR.nii.gz"))
+t2_LR_odd_files = sorted(ODD_DIR.rglob("*T2w_LR.nii.gz"))
+t2_LR3_even_files = sorted(EVEN_DIR.rglob("*T2w_LR3.nii.gz"))
+t2_LR3_odd_files = sorted(ODD_DIR.rglob("*T2w_LR3.nii.gz"))
+t2_LR4_even_files = sorted(EVEN_DIR.rglob("*T2w_LR4.nii.gz"))
+t2_LR4_odd_files = sorted(ODD_DIR.rglob("*T2w_LR4.nii.gz"))
+
+files2_even = list(zip(t1_files, t2_files, t2_LR_even_files))
+files2_odd = list(zip(t1_files, t2_files, t2_LR_odd_files))
+files3_even = list(zip(t1_files, t2_files, t2_LR3_even_files))
+files3_odd = list(zip(t1_files, t2_files, t2_LR3_odd_files))
+files4_even = list(zip(t1_files, t2_files, t2_LR4_even_files))
+files4_odd = list(zip(t1_files, t2_files, t2_LR4_odd_files))
+
+train2_even, val2_even, test2_even = split_dataset(files2_even)
+train2_odd, val2_odd, test2_odd = split_dataset(files2_odd)
+train3_even, val3_even, test3_even = split_dataset(files3_even)
+train3_odd, val3_odd, test3_odd = split_dataset(files3_odd)
+train4_even, val4_even, test4_even = split_dataset(files4_even)
+train4_odd, val4_odd, test4_odd = split_dataset(files4_odd)
+
+train = train2_even + train2_odd + train3_even + train3_odd + train4_even + train4_odd
+val = val2_even + val2_odd + val3_even + val3_odd + val4_even + val4_odd
+test = test2_even + test2_odd + test3_even + test3_odd + test4_even + test4_odd
+
 print(f"Train size: {len(train)}, Val size: {len(val)}, Test size: {len(test)}")
 
 #SHUFFLE DATA
@@ -42,44 +73,34 @@ random.shuffle(train)
 random.shuffle(val)
 random.shuffle(test)
 
-# Smart GPU/CPU detection
+# GPU/CPU DETECTION
 import os
 slurm_gpus = int(os.environ.get('SLURM_GPUS_ON_NODE', '0'))
 has_gpu = torch.cuda.is_available() and slurm_gpus > 0 and torch.cuda.device_count() > 0
-
 device = torch.device("cuda" if has_gpu else "cpu")
 print(f"Using: {device} (SLURM GPUs: {slurm_gpus})")
 
-print("Starting training...")
-
 #EXTRACT PATCHES
-
-patch_size = (32, 32, 32)
-stride = (16, 16, 16)
-ref_img = nib.load(str(t1_files[0]))
-target_shape = (192, 224, 192) 
-train_t1, train_t2, train_t2_LR = get_patches(train, patch_size, stride, target_shape, ref_img)
-val_t1, val_t2, val_t2_LR = get_patches(val, patch_size, stride, target_shape, ref_img)
-test_t1, test_t2, test_t2_LR = get_patches(test, patch_size, stride, target_shape, ref_img)
+train_t1, train_t2, train_t2_LR = get_patches(train, patch_size, stride, target_shape)
+val_t1, val_t2, val_t2_LR = get_patches(val, patch_size, stride, target_shape)
+test_t1, test_t2, test_t2_LR = get_patches(test, patch_size, stride, target_shape)
 
 print(f"Train patches: {len(train_t1)}, Val patches: {len(val_t1)}, Test patches: {len(test_t1)}")
 
 #NETWORK TRAINING
-batch_size = 2
-
-train_dataset = TrainDatasetV2(train_t2_LR, train_t2)
+train_dataset = TrainDataset(train_t1, train_t2_LR, train_t2)
 train_loader = DataLoader(train_dataset, batch_size, shuffle=True)
-val_loader = DataLoader(TrainDatasetV2(val_t2_LR, val_t2), batch_size, shuffle=True)
-
+val_loader = DataLoader(TrainDataset(val_t1, val_t2_LR, val_t2), batch_size, shuffle=True)
 print(f"Number of training batches: {len(train_loader)}")
+
 net = UNet(
-    spatial_dims=3,
-    in_channels=1,
-    out_channels=1,
-    channels=(32, 64, 128, 256, 512, 1024),
-    strides=(2, 2, 2, 2, 2),
-    num_res_units=6,
-    norm=None,
+    spatial_dims=spatial_dims,
+    in_channels=in_channels,
+    out_channels=out_channels,
+    channels=net_channels,
+    strides=net_strides,
+    num_res_units=net_res_units,
+    norm=norm,
 )
 net.to(device, dtype=torch.float32)
 print("Network initialized")
@@ -90,10 +111,6 @@ print("Loss functions initialized")
 loss_list = []
 val_loss_list = []
 optimizer = optim.Adam(net.parameters(), lr=1e-4)
-num_epochs = 50
-print(f"Number of epochs: {num_epochs}")
-
-
 timestamp = datetime.datetime.now().isoformat()
 best_val_loss = float('inf')
 early_stopping = EarlyStopping(patience=5, min_delta=0.0)
@@ -103,17 +120,16 @@ for epoch in range(num_epochs):
     net.train()
     train_loss = 0.0
     for batch in train_loader:
-        input, target = batch
-        input = input.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)  # (B, 1, 64, 64, 64)
-        target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)  # (B, 1, 64, 64, 64)
+        input1, input2, target = batch
+        inputs = torch.stack([input1, input2], dim=1).to(device, dtype=torch.float32, non_blocking=True) 
+        target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True) 
 
         optimizer.zero_grad(set_to_none=True)
-        outputs = net(input)
+        outputs = net(inputs)
         loss = loss_fn(outputs, target)
         loss.backward()
         optimizer.step()
-
-        train_loss += loss.item() * input.size(0)
+        train_loss += loss.item() * inputs.size(0)
        
 
     #VALIDATION
@@ -121,13 +137,13 @@ for epoch in range(num_epochs):
     with torch.no_grad():
         val_loss = 0.0
         for batch in val_loader:
-            input, target = batch
-            input = input.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)  # (B, 1, 64, 64, 64)
-            target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)  # (B, 1, 64, 64, 64)
+            input1, input2, target = batch
+            inputs = torch.stack([input1, input2], dim=1).to(device, dtype=torch.float32, non_blocking=True) 
+            target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True) 
 
-            outputs = net(input)
+            outputs = net(inputs)
             loss = loss_fn(outputs, target)
-            val_loss += loss.item() * input.size(0)
+            val_loss += loss.item() * inputs.size(0)
 
     epoch_train_loss = train_loss / len(train_loader.dataset)
     loss_list.append(epoch_train_loss)
@@ -153,26 +169,28 @@ real_images = []
 
 # Load the best model for testing
 net = UNet(
-    spatial_dims=3,
-    in_channels=1,
-    out_channels=1,
-    channels=(32, 64, 128, 256, 512, 1024),
-    strides=(2, 2, 2, 2, 2),
-    num_res_units=6,
-    norm=None,
+    spatial_dims=spatial_dims,
+    in_channels=in_channels,
+    out_channels=out_channels,
+    channels=net_channels,
+    strides=net_strides,
+    num_res_units=net_res_units,
+    norm=norm,
 )
 
 net.load_state_dict(torch.load(DATA_DIR / "outputs" / f"{timestamp}_model_weights.pth", map_location=device))
 net.to(device, dtype=torch.float32)
-net.eval() # could be not the best model, but the last one. FIX THIS!
+net.eval() 
 with torch.no_grad():
     for i in range(len(test_t1)):
         all_outputs = []
         for j in range(len(test_t1[0])):
-            input = torch.tensor(test_t1[i][j]).float()
-            input = input.unsqueeze(0).unsqueeze(0).to(device, dtype=torch.float32)  # (1, 1, 16, 16, 16)
-            output = net(input)
-            all_outputs.append(output.squeeze(0).squeeze(0).cpu().numpy())  # (64, 64, 64)
+            input1 = torch.tensor(test_t1[i][j]).float()
+            input2 = torch.tensor(test_t2_LR[i][j]).float()
+            inputs = torch.stack([input1, input2], dim=0).unsqueeze(0)
+            inputs = inputs.to(device, dtype=torch.float32)  
+            output = net(inputs)
+            all_outputs.append(output.squeeze(0).squeeze(0).cpu().numpy()) 
         gen_reconstructed = reconstruct_from_patches(all_outputs, target_shape, stride)
         real_reconstructed = reconstruct_from_patches(test_t2[i], target_shape, stride)
         generated_images.append(gen_reconstructed)
@@ -180,12 +198,13 @@ with torch.no_grad():
         print(f"Processed test image {i+1}/{len(test_t2)}")
 
 metrics = calculate_metrics(generated_images, real_images)
-note = "input t2 LR only, LR4 augementation and less deep unet, 6 res units"
-print(note)
-# SAVE RESULTS
 
+# SAVE RESULTS
+end_time = datetime.datetime.now().isoformat()
 row_dict = {
-    "timestamp": timestamp,
+    "timestamp_start": timestamp,
+    "timestamp_end": end_time,
+    "notes": note,
     "train_size": len(train),
     "val_size": len(val),
     "test_size": len(test),
@@ -194,36 +213,32 @@ row_dict = {
     "target_shape": target_shape,
     "normalization": "min-max",
     "model": "MONAI 3D U-Net",
-    "net spatial_dims": 3,
-    "net in_channels": 2,
-    "net out_channels": 1,
-    "net channels": (32, 64, 128, 256, 512, 1024),
-    "net strides": (2, 2, 2, 2, 2),
-    "net num_res_units": 6,
-    "net norm": None,
+    "net spatial_dims": spatial_dims,
+    "net in_channels": in_channels,
+    "net out_channels": out_channels,
+    "net channels": net_channels,
+    "net strides": net_strides,
+    "net num_res_units": net_res_units,
+    "net norm": norm,
+    "loss_fn": "MSELoss",
     "num_epochs": num_epochs,
     "batch_size": batch_size,
     "learning_rate": optimizer.param_groups[0]['lr'],
     "psnr": metrics["psnr"], 
     "ssim": metrics["ssim"],
-    "lpips": None,
     "nrmse": metrics["nrmse"],
     "mse": metrics["mse"],
-    "loss_fn": "MSLELoss",
-    "loss_list": loss_list,
-    "optimizer": "Adam",
-    "masking": "None",
     "weights": f"{timestamp}_model_weights.pth",
-    "val_loss_list": val_loss_list,
     "best_epoch": best_epoch,
-    "stop_epoch": epoch + 1,
+    "augmentations": "D2, D3, D4",
     "patience": early_stopping.patience,
     "min_delta": early_stopping.min_delta,
-    "notes": note,
+    "loss_list": loss_list,
+    "val_loss_list": val_loss_list,
 }
 
 #create outputs directory if it doesn't exist
 (DATA_DIR / "outputs").mkdir(parents=True, exist_ok=True)
 #torch.save(net.state_dict(), DATA_DIR / "outputs" / f"{timestamp}_model_weights.pth") 
-append_row(DATA_DIR / "outputs" / "results.csv", row_dict)
-print("End at:", datetime.datetime.now().isoformat())
+append_row(DATA_DIR / "outputs" / "results2.csv", row_dict)
+print("End at:", end_time)
