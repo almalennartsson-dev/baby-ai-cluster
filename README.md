@@ -1,6 +1,6 @@
 # MRI Super-Resolution Project
 
-This repository contains code and notebooks for MRI super-resolution experiments using PyTorch and nibabel.
+This repository contains code and notebooks for MRI super-resolution experiments using PyTorch.
 
 ## Structure
 - `preprocessing.py`: Dataset and preprocessing utilities
@@ -20,13 +20,3 @@ This repository contains code and notebooks for MRI super-resolution experiments
 - Run the notebooks for interactive exploration.
 - Use `preprocessing.py` for dataset loading and patch extraction.
 
-## Version Control
-- Track your changes with Git.
-- Add and commit files as you work:
-   ```bash
-   git add .
-   git commit -m "Initial commit"
-   ```
-
-## License
-Specify your license here.

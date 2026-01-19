@@ -1,11 +1,10 @@
 import pathlib
 import nibabel as nib
-#from monai.networks.nets import UNet
-from unet import UNet, MergeNet3D
+from monai.networks.nets import UNet
+#from unet import UNet
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import kornia
 from torch.utils.data import DataLoader
 from dataset import TrainDataset, EarlyStopping
 from preprocessing import create_and_save_LR_imgs, reconstruct_from_patches, split_dataset, get_patches
@@ -14,22 +13,41 @@ import datetime
 from evaluations import calculate_metrics, RMSLELoss
 from monai.networks.layers.factories import Norm
 from monai.losses.perceptual import PerceptualLoss
+import random
+
 
 
 print("Start at:", datetime.datetime.now().isoformat())
 #Collect all data files
 #DATA_DIR = pathlib.Path.home()/"data"/"bobsrepository" #cluster?
 DATA_DIR = pathlib.Path("/proj/synthetic_alzheimer/users/x_almle/bobsrepository") #cluster?
+even_dir = DATA_DIR / "even"
+odd_dir = DATA_DIR / "odd"
 assert DATA_DIR.exists(), f"DATA_DIR not found: {DATA_DIR}"
 t1_files = sorted(DATA_DIR.rglob("*T1w.nii.gz"))
 t2_files = sorted(DATA_DIR.rglob("*T2w.nii.gz"))
-t2_LR_files = sorted(DATA_DIR.rglob("*T2w_LR.nii.gz"))
+t2_LR_files = sorted(even_dir.rglob("*T2w_LR.nii.gz"))
+t2_LR4_files = sorted(odd_dir.rglob("*T2w_LR4.nii.gz"))
+t2_LR3_files = sorted(even_dir.rglob("*T2w_LR3.nii.gz"))
 files = list(zip(t1_files, t2_files, t2_LR_files))
-
-print(f"T1 files: {len(t1_files)}, T2 files: {len(t2_files)}, T2 LR files: {len(t2_LR_files)}")
-
-#SPLIT DATASET
+files4 = list(zip(t1_files, t2_files, t2_LR4_files))
+files3 = list(zip(t1_files, t2_files, t2_LR3_files))
 train, val, test = split_dataset(files)
+train4, val4, test4 = split_dataset(files4)
+train3, val3, test3 = split_dataset(files3)
+
+train = train + train4 + train3
+val = val + val4 + val3
+test = test + test4 + test3
+
+print(f"T1 files: {len(t1_files)}, T2 files: {len(t2_files)}, T2 LR files: {len(t2_LR_files)}, T2 LR4 files: {len(t2_LR4_files)}, T2 LR3 files: {len(t2_LR3_files)}")
+print(f"Train size: {len(train)}, Val size: {len(val)}, Test size: {len(test)}")
+
+#SHUFFLE DATA
+random.shuffle(train)
+random.shuffle(val)
+random.shuffle(test)
+
 
 # Smart GPU/CPU detection
 import os
@@ -45,16 +63,22 @@ print("Starting training...")
 
 patch_size = (32, 32, 32)
 stride = (16, 16, 16)
-ref_img = nib.load(str(t1_files[0]))
 target_shape = (192, 224, 192) 
-train_t1, train_t2, train_t2_LR = get_patches(train, patch_size, stride, target_shape, ref_img)
-val_t1, val_t2, val_t2_LR = get_patches(val, patch_size, stride, target_shape, ref_img)
-test_t1, test_t2, test_t2_LR = get_patches(test, patch_size, stride, target_shape, ref_img)
+
+net_channels = (32, 64, 128, 256, 512, 1024)
+net_strides = (2, 2, 2, 2, 2)
+net_res_units = 10
+note = "add LR3 augmentation"
+print(note)
+
+train_t1, train_t2, train_t2_LR = get_patches(train, patch_size, stride, target_shape)
+val_t1, val_t2, val_t2_LR = get_patches(val, patch_size, stride, target_shape)
+test_t1, test_t2, test_t2_LR = get_patches(test, patch_size, stride, target_shape)
 
 print(f"Train patches: {len(train_t1)}, Val patches: {len(val_t1)}, Test patches: {len(test_t1)}")
 
 #NETWORK TRAINING
-batch_size = 4
+batch_size = 2
 
 train_dataset = TrainDataset(train_t1, train_t2_LR, train_t2)
 train_loader = DataLoader(train_dataset, batch_size, shuffle=True)
@@ -65,19 +89,20 @@ net = UNet(
     spatial_dims=3,
     in_channels=2,
     out_channels=1,
-    channels=(16, 32, 64, 128, 256),
-    strides=(2, 2, 2, 2),
-    num_res_units=2,
+    channels=net_channels,
+    strides=net_strides,
+    num_res_units=net_res_units,
     norm=None,
 )
 net.to(device, dtype=torch.float32)
 print("Network initialized")
 loss_fn = nn.MSELoss()
+
 print("Loss functions initialized")
 loss_list = []
 val_loss_list = []
 optimizer = optim.Adam(net.parameters(), lr=1e-4)
-num_epochs = 100
+num_epochs = 50
 print(f"Number of epochs: {num_epochs}")
 
 timestamp = datetime.datetime.now().isoformat()
@@ -95,17 +120,12 @@ for epoch in range(num_epochs):
 
         optimizer.zero_grad(set_to_none=True)
         outputs = net(inputs)
-
-        gt_grad = kornia.filters.spatial_gradient3d(target)
-        pred_grad = kornia.filters.spatial_gradient3d(outputs)
-
-        grad_loss = loss_fn(pred_grad, gt_grad)
-        pix_loss = loss_fn(outputs, target)
-        loss = pix_loss + grad_loss
+        loss = loss_fn(outputs, target)
         loss.backward()
         optimizer.step()
 
         train_loss += loss.item() * inputs.size(0)
+       
 
     #VALIDATION
     net.eval()
@@ -147,9 +167,9 @@ net = UNet(
     spatial_dims=3,
     in_channels=2,
     out_channels=1,
-    channels=(16, 32, 64, 128, 256),
-    strides=(2, 2, 2, 2),
-    num_res_units=2,
+    channels=net_channels,
+    strides=net_strides,
+    num_res_units=net_res_units,
     norm=None,
 )
 
@@ -189,9 +209,9 @@ row_dict = {
     "net spatial_dims": 3,
     "net in_channels": 2,
     "net out_channels": 1,
-    "net channels": (32, 64, 128, 256, 512),
-    "net strides": (2, 2, 2, 2),
-    "net num_res_units": 2,
+    "net channels": net_channels,
+    "net strides": net_strides,
+    "net num_res_units": net_res_units,
     "net norm": None,
     "num_epochs": num_epochs,
     "batch_size": batch_size,
@@ -201,7 +221,7 @@ row_dict = {
     "lpips": None,
     "nrmse": metrics["nrmse"],
     "mse": metrics["mse"],
-    "loss_fn": "mse",
+    "loss_fn": "MSLELoss",
     "loss_list": loss_list,
     "optimizer": "Adam",
     "masking": "None",
@@ -211,7 +231,7 @@ row_dict = {
     "stop_epoch": epoch + 1,
     "patience": early_stopping.patience,
     "min_delta": early_stopping.min_delta,
-    "notes":"add grad loss in training loop",
+    "notes": note,
 }
 
 #create outputs directory if it doesn't exist

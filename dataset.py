@@ -11,6 +11,9 @@ import matplotlib.pyplot as plt
 
 
 class TrainDataset(Dataset):
+
+    """Dataset for training with two inputs."""
+    
     def __init__(self, input1, input2, output): 
         self.input1 = [patch for img_patches in input1 for patch in img_patches]
         self.input2 = [patch for img_patches in input2 for patch in img_patches]
@@ -31,6 +34,9 @@ class TrainDataset(Dataset):
         return input1, input2, output
     
 class TrainDatasetV2(Dataset):
+
+    """Dataset for training with one input."""
+
     def __init__(self, input, output): 
         self.input = [patch for img_patches in input for patch in img_patches]
         self.output = [patch for img_patches in output for patch in img_patches]

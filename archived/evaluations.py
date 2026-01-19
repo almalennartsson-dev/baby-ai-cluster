@@ -34,10 +34,3 @@ def calculate_metrics(real_images, generated_images):
         "mse": np.mean(mse_list)
     }
 
-class RMSLELoss(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.mse = nn.MSELoss()
-        
-    def forward(self, pred, actual):
-        return torch.sqrt(self.mse(torch.log(pred + 1), torch.log(actual + 1)))
