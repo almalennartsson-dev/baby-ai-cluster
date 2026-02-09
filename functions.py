@@ -219,6 +219,44 @@ def get_patches(files, patch_size, stride, target_shape):
     
     return t1_input, t2_output, t2_LR_input
 
+def get_patches_from_triplet(triplet, patch_size, stride, target_shape):
+    """
+    Extracts patches from the given files.
+
+    Parameters:
+    - files: List of tuples containing file paths for T1, T2, and T2_LR images.
+    - patch_size: The size of each patch (depth, height, width).
+    - stride: The stride for patch extraction (depth_stride, height_stride, width_stride).
+    - target_shape: The target shape to which images will be padded.
+    - ref_img: The reference image for resampling.
+
+    Returns:
+    list: List of T1 input patches.
+    list: List of T2 output patches.
+    list: List of T2_LR input patches.
+
+    """
+    t1_file, t2_file, t2_LR_file = triplet
+
+    #load images
+    t1_img = nib.load(t1_file)
+    t2_img = nib.load(t2_file)
+    t2_LR_img = nib.load(t2_LR_file)
+    #padding to be divisible by patch size
+    t1_img = pad_to_shape(t1_img, target_shape)
+    t2_img = pad_to_shape(t2_img, target_shape)
+    t2_LR_img = pad_to_shape(t2_LR_img, target_shape)
+    #normalizing
+    t1_img = normalize(t1_img)
+    t2_img = normalize(t2_img)
+    t2_LR_img = normalize(t2_LR_img)
+    #extracting patches
+    t1_patches = extract_3D_patches(t1_img.get_fdata(), patch_size, stride)
+    t2_patches = extract_3D_patches(t2_img.get_fdata(), patch_size, stride)
+    t2_LR_patches = extract_3D_patches(t2_LR_img.get_fdata(), patch_size, stride)
+
+    return t1_patches, t2_patches, t2_LR_patches
+
 def normalize(img):
 
     """ Normalizes a NIfTI image to the range [0, 1] using the 1st and 99th percentiles.    
