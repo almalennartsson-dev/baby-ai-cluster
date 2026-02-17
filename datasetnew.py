@@ -53,6 +53,8 @@ class TrainDataset(Dataset):
         input1 = torch.from_numpy(input1).float()
         input2 = torch.from_numpy(input2).float()
         output = torch.from_numpy(output).float()
+
+        
         #print(f"Returning sample {idx}: image {img_idx}, patch {patch_idx}")
         return input1, input2, output
 

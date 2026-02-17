@@ -32,11 +32,12 @@ norm=None
 
 loss_fn = nn.MSELoss()
 batch_size = 2
-num_epochs = 50
-note = "Augmented in 3 directions, downsampled with 2,3,4,5,8"
+num_epochs = 40
+note = "Augmented in 3 directions, downsampled with 2,3,4,5,8. No early stopping. new dataloaders"
 timestamp = datetime.datetime.now().isoformat()
 
 print(note)
+print(f"Patch size: {patch_size}, Residual units: {net_res_units}")
 print("Start at:", timestamp)
 
 DATA_DIR = pathlib.Path("/proj/synthetic_alzheimer/users/x_almle/bobsrepository") 
@@ -148,8 +149,10 @@ print(f"Using: {device} (SLURM GPUs: {slurm_gpus})")
 print("Starting training...")
 #NETWORK TRAINING
 train_dataset = TrainDataset(train, patch_size, stride, target_shape)
-train_loader = DataLoader(train_dataset, batch_size, shuffle=False)
-val_loader = DataLoader(TrainDataset(val, patch_size, stride, target_shape), batch_size, shuffle=False)
+#train_loader = DataLoader(train_dataset, batch_size, shuffle=False)
+train_loader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=4, pin_memory=False, persistent_workers=True)
+#val_loader = DataLoader(TrainDataset(val, patch_size, stride, target_shape), batch_size, shuffle=False)
+val_loader = DataLoader(TrainDataset(val, patch_size, stride, target_shape), batch_size, shuffle=False, num_workers=4, pin_memory=False, persistent_workers=True)
 
 print(f"Number of training batches: {len(train_loader)}")
 net = UNet(
@@ -168,10 +171,10 @@ optimizer = optim.Adam(net.parameters(), lr=1e-4)
 print("Network initialized")
 
 best_val_loss = float('inf')
-early_stopping = EarlyStopping(patience=5, min_delta=0.0)
+#early_stopping = EarlyStopping(patience=10, min_delta=0.0)
 
-counter = 0
 for epoch in range(num_epochs):
+    epoch_start_time = datetime.datetime.now()
     #TRAINING
     net.train()
     train_loss = 0.0
@@ -187,8 +190,8 @@ for epoch in range(num_epochs):
         optimizer.step()
 
         # Log each batch with correct step number
-        writer.add_scalar('Loss/Batch_Train', loss.item(), counter)
-        counter += 1
+        #writer.add_scalar('Loss/Batch_Train', loss.item(), counter)
+        #counter += 1
         
         train_loss += loss.item() * inputs.size(0)
         
@@ -221,11 +224,12 @@ for epoch in range(num_epochs):
         best_epoch = epoch + 1 # Store the best epoch number
 
     print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {epoch_train_loss:.4f}, Val Loss: {epoch_val_loss:.4f}")
+    print(f"Epoch duration: {(datetime.datetime.now() - epoch_start_time).total_seconds():.2f} seconds")
 
     #EARLY STOPPING
-    if early_stopping.step(val_loss):
-        print(f"Early stopping at epoch {epoch+1}")
-        break
+    #if early_stopping.step(val_loss):
+    #    print(f"Early stopping at epoch {epoch+1}")
+    #    break
 
 # SAVE RESULTS
 
@@ -257,8 +261,8 @@ row_dict = {
     "batch_size": batch_size,
     "optimizer": "Adam",
     "learning_rate": optimizer.param_groups[0]['lr'],
-    "early stopping patience": early_stopping.patience,
-    "early stopping min_delta": early_stopping.min_delta,
+    "early stopping patience": "",
+    "early stopping min_delta": "",
     "psnr": "", 
     "ssim": "",
     "nrmse": "",

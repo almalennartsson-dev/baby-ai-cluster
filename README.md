@@ -3,9 +3,12 @@
 This repository contains code and notebooks for MRI super-resolution experiments using PyTorch.
 
 ## Structure
-- `preprocessing.py`: Dataset and preprocessing utilities
-- `pytorch-tutorial.ipynb`: Main notebook for experiments
-- `test-lab.ipynb`: Additional tests and experiments
+- `functions.py`: Dataset and preprocessing utilities
+- `dataset.py`: Main notebook for experiments
+- `requirements.txt`: Additional tests and experiments
+- `training.py`: Additional tests and experiments
+- `testing.py`: Additional tests and experiments
+
 
 ## Getting Started
 1. Clone the repo or copy your files here.
