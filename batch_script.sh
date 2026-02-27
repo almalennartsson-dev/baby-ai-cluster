@@ -9,4 +9,4 @@
 module load Miniforge3/24.7.1-2-hpc1-bdist
 mamba activate /proj/synthetic_alzheimer/users/x_almle/.venvs/mri-sr-bob
 
-python training_aug_new_less.py
+python training_aug_new_less_single.py

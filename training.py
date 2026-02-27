@@ -22,15 +22,15 @@ target_shape = (192, 224, 192)
 spatial_dims=3
 in_channels=2
 out_channels=1
-net_channels = (16, 32, 64, 128, 256)
-net_strides = (2, 2, 2, 2)
-net_res_units = 2
+net_channels = (32, 64, 128, 256, 512, 1024)
+net_strides = (2, 2, 2, 2, 2)
+net_res_units = 10
 norm=None
 
 loss_fn = nn.MSELoss()
-batch_size = 2
+batch_size = 32
 num_epochs = 50
-note = "shallow unet"
+note = "main model"
 augmentations = [2]
 augmentation_dir = "axial"
 timestamp = datetime.datetime.now().isoformat()
@@ -60,9 +60,9 @@ print(f"Train size: {len(train)}, Val size: {len(val)}, Test size: {len(test)}")
 assert len(train) > 0 and len(val) > 0 and len(test) > 0, "One of the dataset splits is empty."
 
 #SHUFFLE DATA
-#random.shuffle(train)
-#random.shuffle(val)
-#random.shuffle(test)
+random.shuffle(train)
+random.shuffle(val)
+random.shuffle(test)
 
 # GPU/CPU detection
 import os
@@ -73,16 +73,15 @@ cuda_version = torch.version.cuda
 print(f"Using: {device} version {cuda_version} (SLURM GPUs: {slurm_gpus})")
 
 #EXTRACT PATCHES
-train_t1, train_t2, train_t2_LR = get_patches(train, patch_size, stride, target_shape)
-val_t1, val_t2, val_t2_LR = get_patches(val, patch_size, stride, target_shape)
-test_t1, test_t2, test_t2_LR = get_patches(test, patch_size, stride, target_shape)
-print(f"Train patches: {len(train_t1)}, Val patches: {len(val_t1)}, Test patches: {len(test_t1)}")
+#train_t1, train_t2, train_t2_LR = get_patches(train, patch_size, stride, target_shape)
+#val_t1, val_t2, val_t2_LR = get_patches(val, patch_size, stride, target_shape)
+#test_t1, test_t2, test_t2_LR = get_patches(test, patch_size, stride, target_shape)
+#print(f"Train patches: {len(train_t1)}, Val patches: {len(val_t1)}, Test patches: {len(test_t1)}")
 
 #NETWORK TRAINING
-train_dataset = TrainDataset(train_t1, train_t2_LR, train_t2)
-#train_dataset = TrainDatasetV2(train_t1, train_t2)
-train_loader = DataLoader(train_dataset, batch_size, shuffle=True)
-val_loader = DataLoader(TrainDataset(val_t1, val_t2_LR, val_t2), batch_size, shuffle=True)
+train_dataset = TrainDataset(train, patch_size, stride, target_shape)
+train_loader = DataLoader(train_dataset, batch_size, shuffle=False)
+val_loader = DataLoader(TrainDataset(val, patch_size, stride, target_shape), batch_size, shuffle=False)
 #val_loader = DataLoader(TrainDatasetV2(val_t1, val_t2), batch_size, shuffle=True)
 
 print(f"Number of training batches: {len(train_loader)}")
@@ -113,9 +112,6 @@ for epoch in range(num_epochs):
         input1, input2, target = batch
         inputs = torch.stack([input1, input2], dim=1).to(device, dtype=torch.float32, non_blocking=True)
         target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)
-        #input, target = batch
-        #inputs = input.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)
-        #target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)
 
         optimizer.zero_grad(set_to_none=True)
         outputs = net(inputs)
@@ -133,10 +129,7 @@ for epoch in range(num_epochs):
             input1, input2, target = batch
             inputs = torch.stack([input1, input2], dim=1).to(device, dtype=torch.float32, non_blocking=True)
             target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True) 
-            #input, target = batch
-            #inputs = input.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)
-            #target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)
-
+            
             outputs = net(inputs)
             loss = loss_fn(outputs, target)
             val_loss += loss.item() * inputs.size(0)
@@ -158,47 +151,9 @@ for epoch in range(num_epochs):
     print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {epoch_train_loss:.4f}, Val Loss: {epoch_val_loss:.4f}")
 
     #EARLY STOPPING
-    if early_stopping.step(val_loss): #change to epoch_val_loss if needed?
+    if early_stopping.step(epoch_val_loss): #is this correct now
         print(f"Early stopping at epoch {epoch+1}")
         break
-
-#TESTING
-generated_images = []
-real_images = []
-
-# LOAD BEST MODEL FOR TESTING
-net = UNet(
-    spatial_dims=spatial_dims,
-    in_channels=in_channels,
-    out_channels=out_channels,
-    channels=net_channels,
-    strides=net_strides,
-    num_res_units=net_res_units,
-    norm=norm,
-)
-
-net.load_state_dict(torch.load(DATA_DIR / "outputs" / f"{timestamp}_model_weights.pth", map_location=device))
-net.to(device, dtype=torch.float32)
-net.eval()
-with torch.no_grad():
-    for i in range(len(test_t1)):
-        all_outputs = []
-        for j in range(len(test_t2_LR[0])):
-            input1 = torch.tensor(test_t1[i][j]).float()
-            input2 = torch.tensor(test_t2_LR[i][j]).float()
-            inputs = torch.stack([input1, input2], dim=0).unsqueeze(0) 
-            inputs = inputs.to(device, dtype=torch.float32)
-            #input = torch.tensor(test_t1[i][j]).float()
-            #inputs = input.unsqueeze(0).unsqueeze(0).to(device, dtype=torch.float32)
-            output = net(inputs)
-            all_outputs.append(output.squeeze(0).squeeze(0).cpu().numpy())
-        gen_reconstructed = reconstruct_from_patches(all_outputs, target_shape, stride)
-        real_reconstructed = reconstruct_from_patches(test_t2[i], target_shape, stride)
-        generated_images.append(gen_reconstructed)
-        real_images.append(real_reconstructed)
-        print(f"Processed test image {i+1}/{len(test_t1)}")
-
-metrics = calculate_metrics(generated_images, real_images)
 
 # SAVE RESULTS IN CSV
 
@@ -232,17 +187,13 @@ row_dict = {
     "learning_rate": optimizer.param_groups[0]['lr'],
     "early stopping patience": early_stopping.patience,
     "early stopping min_delta": early_stopping.min_delta,
-    "psnr": metrics["psnr"], 
-    "ssim": metrics["ssim"],
-    "nrmse": metrics["nrmse"],
-    "mse": metrics["mse"],
     "loss_list": loss_list,
     "val_loss_list": val_loss_list,
 }
 
 #create outputs directory if it doesn't exist
 (DATA_DIR / "outputs").mkdir(parents=True, exist_ok=True)
-append_row(DATA_DIR / "outputs" / "results2.csv", row_dict)
+append_row(DATA_DIR / "outputs" / "results3.csv", row_dict)
 print("End at:", datetime.datetime.now().isoformat())
 
 # Close TensorBoard writer

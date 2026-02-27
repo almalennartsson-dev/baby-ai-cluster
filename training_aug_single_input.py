@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from datasetnew import TrainDataset, EarlyStopping
+from dataset import *
 from functions import *
 import datetime
 from monai.networks.layers.factories import Norm
@@ -23,18 +23,17 @@ augmentations = [2,3,4,5]
 augmentation_dir = "all_directions" 
 
 spatial_dims=3
-in_channels=2
+in_channels=1
 out_channels=1
 net_channels = (32, 64, 128, 256, 512, 1024)
 net_strides = (2, 2, 2, 2, 2)
 net_res_units = 10
 norm=None
 
-loss_fn = nn.L1Loss()
-#nn.MSELoss()
+loss_fn = nn.MSELoss()
 batch_size = 32
 num_epochs = 100
-note = "Augmented in 3 directions, downsampled with 2,3,4,5. L1 loss"
+note = "Augmented in 3 directions, downsampled with 2,3,4,5"
 timestamp = datetime.datetime.now().isoformat()
 
 print(note)
@@ -54,10 +53,10 @@ assert CO_DIR.exists(), f"CO_DIR not found: {CO_DIR}"
 assert SA_DIR.exists(), f"SA_DIR not found: {SA_DIR}"
 
 #load GT files
-t1_files = sorted(DATA_DIR.rglob("*T1w.nii.gz"))
+#t1_files = sorted(DATA_DIR.rglob("*T1w.nii.gz"))
 t2_files = sorted(DATA_DIR.rglob("*T2w.nii.gz"))
 
-print(f"T1 files: {len(t1_files)}, T2 files: {len(t2_files)}")
+print(f"T2 files: {len(t2_files)}")
 #AXIAL
 #load all files
 t2_ax_LR2_files = sorted(AX_DIR.rglob("*T2w_LR.nii.gz"))
@@ -66,10 +65,10 @@ t2_ax_LR4_files = sorted(AX_DIR.rglob("*T2w_LR4.nii.gz"))
 t2_ax_LR5_files = sorted(AX_DIR.rglob("*T2w_LR5.nii.gz"))
 print(f"Axial LR2 files: {len(t2_ax_LR2_files)}, LR3 files: {len(t2_ax_LR3_files)}, LR4 files: {len(t2_ax_LR4_files)}, LR5 files: {len(t2_ax_LR5_files)}")
 #combine all LR files
-files_ax_LR2 = list(zip(t1_files, t2_files, t2_ax_LR2_files))
-files_ax_LR3 = list(zip(t1_files, t2_files, t2_ax_LR3_files))
-files_ax_LR4 = list(zip(t1_files, t2_files, t2_ax_LR4_files))
-files_ax_LR5 = list(zip(t1_files, t2_files, t2_ax_LR5_files))
+files_ax_LR2 = list(zip(t2_files, t2_ax_LR2_files))
+files_ax_LR3 = list(zip(t2_files, t2_ax_LR3_files))
+files_ax_LR4 = list(zip(t2_files, t2_ax_LR4_files))
+files_ax_LR5 = list(zip(t2_files, t2_ax_LR5_files))
 #split datasets
 train_ax_LR2, val_ax_LR2, test_ax_LR2 = split_dataset(files_ax_LR2)
 train_ax_LR3, val_ax_LR3, test_ax_LR3 = split_dataset(files_ax_LR3)
@@ -84,10 +83,10 @@ t2_co_LR4_files = sorted(CO_DIR.rglob("*T2w_LR4.nii.gz"))
 t2_co_LR5_files = sorted(CO_DIR.rglob("*T2w_LR5.nii.gz"))
 print(f"Coronal LR2 files: {len(t2_co_LR2_files)}, LR3 files: {len(t2_co_LR3_files)}, LR4 files: {len(t2_co_LR4_files)}, LR5 files: {len(t2_co_LR5_files)}")
 #combine all LR files
-files_co_LR2 = list(zip(t1_files, t2_files, t2_co_LR2_files))
-files_co_LR3 = list(zip(t1_files, t2_files, t2_co_LR3_files))
-files_co_LR4 = list(zip(t1_files, t2_files, t2_co_LR4_files))
-files_co_LR5 = list(zip(t1_files, t2_files, t2_co_LR5_files))
+files_co_LR2 = list(zip(t2_files, t2_co_LR2_files))
+files_co_LR3 = list(zip(t2_files, t2_co_LR3_files))
+files_co_LR4 = list(zip(t2_files, t2_co_LR4_files))
+files_co_LR5 = list(zip(t2_files, t2_co_LR5_files))
 #split datasets
 train_co_LR2, val_co_LR2, test_co_LR2 = split_dataset(files_co_LR2)
 train_co_LR3, val_co_LR3, test_co_LR3 = split_dataset(files_co_LR3)
@@ -102,10 +101,10 @@ t2_sa_LR4_files = sorted(SA_DIR.rglob("*T2w_LR4.nii.gz"))
 t2_sa_LR5_files = sorted(SA_DIR.rglob("*T2w_LR5.nii.gz"))
 print(f"Sagittal LR2 files: {len(t2_sa_LR2_files)}, LR3 files: {len(t2_sa_LR3_files)}, LR4 files: {len(t2_sa_LR4_files)}, LR5 files: {len(t2_sa_LR5_files)}")
 #combine all LR files
-files_sa_LR2 = list(zip(t1_files, t2_files, t2_sa_LR2_files))
-files_sa_LR3 = list(zip(t1_files, t2_files, t2_sa_LR3_files))
-files_sa_LR4 = list(zip(t1_files, t2_files, t2_sa_LR4_files))
-files_sa_LR5 = list(zip(t1_files, t2_files, t2_sa_LR5_files))
+files_sa_LR2 = list(zip(t2_files, t2_sa_LR2_files))
+files_sa_LR3 = list(zip(t2_files, t2_sa_LR3_files))
+files_sa_LR4 = list(zip(t2_files, t2_sa_LR4_files))
+files_sa_LR5 = list(zip(t2_files, t2_sa_LR5_files))
 #split datasets
 train_sa_LR2, val_sa_LR2, test_sa_LR2 = split_dataset(files_sa_LR2)
 train_sa_LR3, val_sa_LR3, test_sa_LR3 = split_dataset(files_sa_LR3)
@@ -140,9 +139,9 @@ print(f"Using: {device} (SLURM GPUs: {slurm_gpus})")
 
 print("Starting training...")
 #NETWORK TRAINING
-train_dataset = TrainDataset(train, patch_size, stride, target_shape)
+train_dataset = TrainDatasetV2(train, patch_size, stride, target_shape)
 train_loader = DataLoader(train_dataset, batch_size, shuffle=False)
-val_loader = DataLoader(TrainDataset(val, patch_size, stride, target_shape), batch_size, shuffle=False)
+val_loader = DataLoader(TrainDatasetV2(val, patch_size, stride, target_shape), batch_size, shuffle=False)
 
 print(f"Number of training batches: {len(train_loader)}")
 net = UNet(
@@ -161,7 +160,6 @@ optimizer = optim.Adam(net.parameters(), lr=1e-4)
 print("Network initialized")
 
 best_val_loss = float('inf')
-#early_stopping = EarlyStopping(patience=10, min_delta=0.0)
 
 for epoch in range(num_epochs):
     epoch_start_time = datetime.datetime.now()
@@ -169,21 +167,17 @@ for epoch in range(num_epochs):
     net.train()
     train_loss = 0.0
     for batch in train_loader:
-        input1, input2, target = batch
-        inputs = torch.stack([input1, input2], dim=1).to(device, dtype=torch.float32, non_blocking=True)
-        target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)
+        input, target = batch
+        input = input.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)  
+        target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True) 
 
         optimizer.zero_grad(set_to_none=True)
-        outputs = net(inputs)
+        outputs = net(input)
         loss = loss_fn(outputs, target)
         loss.backward()
         optimizer.step()
 
-        # Log each batch with correct step number
-        #writer.add_scalar('Loss/Batch_Train', loss.item(), counter)
-        #counter += 1
-        
-        train_loss += loss.item() * inputs.size(0)
+        train_loss += loss.item() * input.size(0)
         
 
     #VALIDATION
@@ -191,13 +185,13 @@ for epoch in range(num_epochs):
     with torch.no_grad():
         val_loss = 0.0
         for batch in val_loader:
-            input1, input2, target = batch
-            inputs = torch.stack([input1, input2], dim=1).to(device, dtype=torch.float32, non_blocking=True)
+            input, target = batch
+            input = input.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True) 
             target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True) 
 
-            outputs = net(inputs)
+            outputs = net(input)
             loss = loss_fn(outputs, target)
-            val_loss += loss.item() * inputs.size(0)
+            val_loss += loss.item() * input.size(0)
 
     epoch_train_loss = train_loss / len(train_loader.dataset)
     loss_list.append(epoch_train_loss)
@@ -212,15 +206,9 @@ for epoch in range(num_epochs):
         best_val_loss = epoch_val_loss
         torch.save(net.state_dict(), DATA_DIR / "outputs" / f"{timestamp}_model_weights.pth")
         best_epoch = epoch + 1 # Store the best epoch number
-        writer.add_text('Best Model', f'New best model saved at epoch {best_epoch} with val loss {best_val_loss:.4f}', best_epoch)
 
     print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {epoch_train_loss:.4f}, Val Loss: {epoch_val_loss:.4f}")
     print(f"Epoch duration: {(datetime.datetime.now() - epoch_start_time).total_seconds():.2f} seconds")
-
-    #EARLY STOPPING
-    #if early_stopping.step(val_loss):
-    #    print(f"Early stopping at epoch {epoch+1}")
-    #    break
 
 # SAVE RESULTS
 
@@ -245,7 +233,7 @@ row_dict = {
     "net channels": net_channels,
     "net strides": net_strides,
     "net num_res_units": net_res_units,
-    "loss function": "L1Loss",
+    "loss function": "MSELoss",
     "net norm": norm,
     "max num of epochs": num_epochs,
     "best_epoch": best_epoch,

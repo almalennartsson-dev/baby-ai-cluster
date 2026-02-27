@@ -1,4 +1,5 @@
-# MRI Super-Resolution Project
+# BABY-AI: Anisotropic to Isotropic Reconstruction of Infant Brain MRI with Deep Learning
+
 
 This repository contains code and notebooks for MRI super-resolution experiments using PyTorch.
 

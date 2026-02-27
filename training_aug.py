@@ -13,13 +13,13 @@ from monai.losses.perceptual import PerceptualLoss
 import random
 from torch.utils.tensorboard import SummaryWriter 
 
-
+print("script starting...")
 
 #SETTINGS
 patch_size = (32, 32, 32)
 stride = (16, 16, 16)
 target_shape = (192, 224, 192)
-augmentations = [2,3,4,5,8]
+augmentations = [2,3,4,5]
 augmentation_dir = "all_directions" 
 
 spatial_dims=3
@@ -31,12 +31,13 @@ net_res_units = 10
 norm=None
 
 loss_fn = nn.MSELoss()
-batch_size = 2
-num_epochs = 50
-note = "Augmented in 3 directions, downsampled with 2,3,4,5,8. larger batch size, smaller learning rate"
+batch_size = 128
+num_epochs = 100
+note = "Augmented in 3 directions, downsampled with 2,3,4,5, new batch size"
 timestamp = datetime.datetime.now().isoformat()
 
 print(note)
+print(f"Patch size: {patch_size}, Residual units: {net_res_units}")
 print("Start at:", timestamp)
 
 DATA_DIR = pathlib.Path("/proj/synthetic_alzheimer/users/x_almle/bobsrepository") 
@@ -56,27 +57,23 @@ t1_files = sorted(DATA_DIR.rglob("*T1w.nii.gz"))
 t2_files = sorted(DATA_DIR.rglob("*T2w.nii.gz"))
 
 print(f"T1 files: {len(t1_files)}, T2 files: {len(t2_files)}")
-
 #AXIAL
 #load all files
 t2_ax_LR2_files = sorted(AX_DIR.rglob("*T2w_LR.nii.gz"))
 t2_ax_LR3_files = sorted(AX_DIR.rglob("*T2w_LR3.nii.gz"))
 t2_ax_LR4_files = sorted(AX_DIR.rglob("*T2w_LR4.nii.gz"))
 t2_ax_LR5_files = sorted(AX_DIR.rglob("*T2w_LR5.nii.gz"))
-t2_ax_LR8_files = sorted(AX_DIR.rglob("*T2w_LR8.nii.gz"))
-print(f"Axial LR2 files: {len(t2_ax_LR2_files)}, LR3 files: {len(t2_ax_LR3_files)}, LR4 files: {len(t2_ax_LR4_files)}, LR5 files: {len(t2_ax_LR5_files)}, LR8 files: {len(t2_ax_LR8_files)}")
+print(f"Axial LR2 files: {len(t2_ax_LR2_files)}, LR3 files: {len(t2_ax_LR3_files)}, LR4 files: {len(t2_ax_LR4_files)}, LR5 files: {len(t2_ax_LR5_files)}")
 #combine all LR files
 files_ax_LR2 = list(zip(t1_files, t2_files, t2_ax_LR2_files))
 files_ax_LR3 = list(zip(t1_files, t2_files, t2_ax_LR3_files))
 files_ax_LR4 = list(zip(t1_files, t2_files, t2_ax_LR4_files))
 files_ax_LR5 = list(zip(t1_files, t2_files, t2_ax_LR5_files))
-files_ax_LR8 = list(zip(t1_files, t2_files, t2_ax_LR8_files))
 #split datasets
 train_ax_LR2, val_ax_LR2, test_ax_LR2 = split_dataset(files_ax_LR2)
 train_ax_LR3, val_ax_LR3, test_ax_LR3 = split_dataset(files_ax_LR3)
 train_ax_LR4, val_ax_LR4, test_ax_LR4 = split_dataset(files_ax_LR4)
 train_ax_LR5, val_ax_LR5, test_ax_LR5 = split_dataset(files_ax_LR5)
-train_ax_LR8, val_ax_LR8, test_ax_LR8 = split_dataset(files_ax_LR8)
 
 #CORONAL
 #load all files
@@ -84,20 +81,17 @@ t2_co_LR2_files = sorted(CO_DIR.rglob("*T2w_LR2.nii.gz"))
 t2_co_LR3_files = sorted(CO_DIR.rglob("*T2w_LR3.nii.gz"))
 t2_co_LR4_files = sorted(CO_DIR.rglob("*T2w_LR4.nii.gz"))
 t2_co_LR5_files = sorted(CO_DIR.rglob("*T2w_LR5.nii.gz"))
-t2_co_LR8_files = sorted(CO_DIR.rglob("*T2w_LR8.nii.gz"))
-print(f"Coronal LR2 files: {len(t2_co_LR2_files)}, LR3 files: {len(t2_co_LR3_files)}, LR4 files: {len(t2_co_LR4_files)}, LR5 files: {len(t2_co_LR5_files)}, LR8 files: {len(t2_co_LR8_files)}")
+print(f"Coronal LR2 files: {len(t2_co_LR2_files)}, LR3 files: {len(t2_co_LR3_files)}, LR4 files: {len(t2_co_LR4_files)}, LR5 files: {len(t2_co_LR5_files)}")
 #combine all LR files
 files_co_LR2 = list(zip(t1_files, t2_files, t2_co_LR2_files))
 files_co_LR3 = list(zip(t1_files, t2_files, t2_co_LR3_files))
 files_co_LR4 = list(zip(t1_files, t2_files, t2_co_LR4_files))
 files_co_LR5 = list(zip(t1_files, t2_files, t2_co_LR5_files))
-files_co_LR8 = list(zip(t1_files, t2_files, t2_co_LR8_files))
 #split datasets
 train_co_LR2, val_co_LR2, test_co_LR2 = split_dataset(files_co_LR2)
 train_co_LR3, val_co_LR3, test_co_LR3 = split_dataset(files_co_LR3)
 train_co_LR4, val_co_LR4, test_co_LR4 = split_dataset(files_co_LR4)
 train_co_LR5, val_co_LR5, test_co_LR5 = split_dataset(files_co_LR5)
-train_co_LR8, val_co_LR8, test_co_LR8 = split_dataset(files_co_LR8)
 
 #SAGITTAL
 #load all files
@@ -105,32 +99,29 @@ t2_sa_LR2_files = sorted(SA_DIR.rglob("*T2w_LR2.nii.gz"))
 t2_sa_LR3_files = sorted(SA_DIR.rglob("*T2w_LR3.nii.gz"))
 t2_sa_LR4_files = sorted(SA_DIR.rglob("*T2w_LR4.nii.gz"))
 t2_sa_LR5_files = sorted(SA_DIR.rglob("*T2w_LR5.nii.gz"))
-t2_sa_LR8_files = sorted(SA_DIR.rglob("*T2w_LR8.nii.gz"))
-print(f"Sagittal LR2 files: {len(t2_sa_LR2_files)}, LR3 files: {len(t2_sa_LR3_files)}, LR4 files: {len(t2_sa_LR4_files)}, LR5 files: {len(t2_sa_LR5_files)}, LR8 files: {len(t2_sa_LR8_files)}")
+print(f"Sagittal LR2 files: {len(t2_sa_LR2_files)}, LR3 files: {len(t2_sa_LR3_files)}, LR4 files: {len(t2_sa_LR4_files)}, LR5 files: {len(t2_sa_LR5_files)}")
 #combine all LR files
 files_sa_LR2 = list(zip(t1_files, t2_files, t2_sa_LR2_files))
 files_sa_LR3 = list(zip(t1_files, t2_files, t2_sa_LR3_files))
 files_sa_LR4 = list(zip(t1_files, t2_files, t2_sa_LR4_files))
 files_sa_LR5 = list(zip(t1_files, t2_files, t2_sa_LR5_files))
-files_sa_LR8 = list(zip(t1_files, t2_files, t2_sa_LR8_files))
 #split datasets
 train_sa_LR2, val_sa_LR2, test_sa_LR2 = split_dataset(files_sa_LR2)
 train_sa_LR3, val_sa_LR3, test_sa_LR3 = split_dataset(files_sa_LR3)
 train_sa_LR4, val_sa_LR4, test_sa_LR4 = split_dataset(files_sa_LR4) 
 train_sa_LR5, val_sa_LR5, test_sa_LR5 = split_dataset(files_sa_LR5)
-train_sa_LR8, val_sa_LR8, test_sa_LR8 = split_dataset(files_sa_LR8)
 
 
 #COMBINE ALL ORIENTATIONS
-train = train_ax_LR2 + train_ax_LR3 + train_ax_LR4 + train_ax_LR5 + train_ax_LR8 + \
-        train_co_LR2 + train_co_LR3 + train_co_LR4 + train_co_LR5 + train_co_LR8 + \
-        train_sa_LR2 + train_sa_LR3 + train_sa_LR4 + train_sa_LR5 + train_sa_LR8
-val = val_ax_LR2 + val_ax_LR3 + val_ax_LR4 + val_ax_LR5 + val_ax_LR8 + \
-      val_co_LR2 + val_co_LR3 + val_co_LR4 + val_co_LR5 + val_co_LR8 + \
-      val_sa_LR2 + val_sa_LR3 + val_sa_LR4 + val_sa_LR5 + val_sa_LR8
-test = test_ax_LR2 + test_ax_LR3 + test_ax_LR4 + test_ax_LR5 + test_ax_LR8 + \
-       test_co_LR2 + test_co_LR3 + test_co_LR4 + test_co_LR5 + test_co_LR8 + \
-       test_sa_LR2 + test_sa_LR3 + test_sa_LR4 + test_sa_LR5 + test_sa_LR8  
+train = train_ax_LR2 + train_ax_LR3 + train_ax_LR4 + train_ax_LR5 + \
+        train_co_LR2 + train_co_LR3 + train_co_LR4 + train_co_LR5 + \
+        train_sa_LR2 + train_sa_LR3 + train_sa_LR4 + train_sa_LR5
+val = val_ax_LR2 + val_ax_LR3 + val_ax_LR4 + val_ax_LR5 +  \
+      val_co_LR2 + val_co_LR3 + val_co_LR4 + val_co_LR5 +  \
+      val_sa_LR2 + val_sa_LR3 + val_sa_LR4 + val_sa_LR5
+test = test_ax_LR2 + test_ax_LR3 + test_ax_LR4 + test_ax_LR5 + \
+       test_co_LR2 + test_co_LR3 + test_co_LR4 + test_co_LR5 + \
+       test_sa_LR2 + test_sa_LR3 + test_sa_LR4 + test_sa_LR5
 
 #SHUFFLE DATA
 random.shuffle(train)
@@ -147,19 +138,10 @@ device = torch.device("cuda" if has_gpu else "cpu")
 print(f"Using: {device} (SLURM GPUs: {slurm_gpus})")
 
 print("Starting training...")
-
-#EXTRACT PATCHES
-
-train_t1, train_t2, train_t2_LR = get_patches(train, patch_size, stride, target_shape)
-val_t1, val_t2, val_t2_LR = get_patches(val, patch_size, stride, target_shape)
-test_t1, test_t2, test_t2_LR = get_patches(test, patch_size, stride, target_shape)
-
-print(f"Train patches: {len(train_t1)}, Val patches: {len(val_t1)}, Test patches: {len(test_t1)}")
-
 #NETWORK TRAINING
-train_dataset = TrainDataset(train_t1, train_t2_LR, train_t2)
-train_loader = DataLoader(train_dataset, batch_size, shuffle=True)
-val_loader = DataLoader(TrainDataset(val_t1, val_t2_LR, val_t2), batch_size, shuffle=True)
+train_dataset = TrainDataset(train, patch_size, stride, target_shape)
+train_loader = DataLoader(train_dataset, batch_size, shuffle=False)
+val_loader = DataLoader(TrainDataset(val, patch_size, stride, target_shape), batch_size, shuffle=False)
 
 print(f"Number of training batches: {len(train_loader)}")
 net = UNet(
@@ -174,17 +156,18 @@ net = UNet(
 net.to(device, dtype=torch.float32)
 loss_list = []
 val_loss_list = []
-optimizer = optim.Adam(net.parameters(), lr=1e-5)
+optimizer = optim.Adam(net.parameters(), lr=1e-4)
 print("Network initialized")
 
 best_val_loss = float('inf')
-early_stopping = EarlyStopping(patience=5, min_delta=0.0)
+#early_stopping = EarlyStopping(patience=10, min_delta=0.0)
 
 for epoch in range(num_epochs):
+    epoch_start_time = datetime.datetime.now()
     #TRAINING
     net.train()
     train_loss = 0.0
-    for batch_idx, batch in enumerate(train_loader):
+    for batch in train_loader:
         input1, input2, target = batch
         inputs = torch.stack([input1, input2], dim=1).to(device, dtype=torch.float32, non_blocking=True)
         target = target.unsqueeze(1).to(device, dtype=torch.float32, non_blocking=True)
@@ -195,12 +178,12 @@ for epoch in range(num_epochs):
         loss.backward()
         optimizer.step()
 
+        # Log each batch with correct step number
+        #writer.add_scalar('Loss/Batch_Train', loss.item(), counter)
+        #counter += 1
+        
         train_loss += loss.item() * inputs.size(0)
         
-        # Log each batch with correct step number
-        global_step = epoch * len(train_loader) + batch_idx
-        writer.add_scalar('Loss/Batch_Train', loss.item(), global_step)
-       
 
     #VALIDATION
     net.eval()
@@ -230,47 +213,12 @@ for epoch in range(num_epochs):
         best_epoch = epoch + 1 # Store the best epoch number
 
     print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {epoch_train_loss:.4f}, Val Loss: {epoch_val_loss:.4f}")
+    print(f"Epoch duration: {(datetime.datetime.now() - epoch_start_time).total_seconds():.2f} seconds")
 
     #EARLY STOPPING
-    if early_stopping.step(val_loss):
-        print(f"Early stopping at epoch {epoch+1}")
-        break
-
-#TESTING
-generated_images = []
-real_images = []
-
-# Load the best model for testing
-net = UNet(
-    spatial_dims=spatial_dims,
-    in_channels=in_channels,
-    out_channels=out_channels,
-    channels=net_channels,
-    strides=net_strides,
-    num_res_units=net_res_units,
-    norm=norm,
-)
-
-net.load_state_dict(torch.load(DATA_DIR / "outputs" / f"{timestamp}_model_weights.pth", map_location=device))
-net.to(device, dtype=torch.float32)
-net.eval()
-with torch.no_grad():
-    for i in range(len(test_t1)):
-        all_outputs = []
-        for j in range(len(test_t1[0])):
-            input1 = torch.tensor(test_t1[i][j]).float()
-            input2 = torch.tensor(test_t2_LR[i][j]).float()
-            inputs = torch.stack([input1, input2], dim=0).unsqueeze(0) 
-            inputs = inputs.to(device, dtype=torch.float32)
-            output = net(inputs)
-            all_outputs.append(output.squeeze(0).squeeze(0).cpu().numpy())
-        gen_reconstructed = reconstruct_from_patches(all_outputs, target_shape, stride)
-        real_reconstructed = reconstruct_from_patches(test_t2[i], target_shape, stride)
-        generated_images.append(gen_reconstructed)
-        real_images.append(real_reconstructed)
-        print(f"Processed test image {i+1}/{len(test_t1)}")
-
-metrics = calculate_metrics(generated_images, real_images)
+    #if early_stopping.step(val_loss):
+    #    print(f"Early stopping at epoch {epoch+1}")
+    #    break
 
 # SAVE RESULTS
 
@@ -295,19 +243,19 @@ row_dict = {
     "net channels": net_channels,
     "net strides": net_strides,
     "net num_res_units": net_res_units,
-    "loss function": "MSELoss",
+    "loss function": "L1Loss",
     "net norm": norm,
     "max num of epochs": num_epochs,
     "best_epoch": best_epoch,
     "batch_size": batch_size,
     "optimizer": "Adam",
     "learning_rate": optimizer.param_groups[0]['lr'],
-    "early stopping patience": early_stopping.patience,
-    "early stopping min_delta": early_stopping.min_delta,
-    "psnr": metrics["psnr"], 
-    "ssim": metrics["ssim"],
-    "nrmse": metrics["nrmse"],
-    "mse": metrics["mse"],
+    "early stopping patience": '',
+    "early stopping min_delta": '',
+    "psnr": "", 
+    "ssim": "",
+    "nrmse": "",
+    "mse": "",
     "loss_list": loss_list,
     "val_loss_list": val_loss_list,
 }
